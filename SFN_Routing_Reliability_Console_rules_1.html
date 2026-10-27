@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important}body{margin:0}img{max-width:100%}</style>
+<title>SFN Routing Reliability Console</title>
+</head>
+<body>
+<style>
+/* Layout: two tabs in work order — (1) network input: nodes, arcs, paths; (2) analysis: control rail + decision summary + linked panels. Stacks to one column on phones. */
+:root{
+  --bg:#edf0f3; --panel:#ffffff; --ink:#16202b; --muted:#5a6675; --line:#d4dae1; --soft:#f5f7f9;
+  --accent:#0d6b86; --accent-ink:#ffffff; --warn:#b5401f;
+  --ok:#2f8a57; --pol:#d4861a; --nt:#c4523a; --af:#7b8794;
+  --heat0:#f2f5f8; --heat1:#0b4f66;
+  --font-display:"Times New Roman",Times,"Noto Serif TC","PMingLiU",serif;
+  --font-body:"Times New Roman",Times,"Noto Serif TC","PMingLiU",serif;
+  --font-data:"Times New Roman",Times,"Noto Serif TC","PMingLiU",serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f141a; --panel:#171e26; --ink:#e3e8ee; --muted:#93a0ae; --line:#2b3540; --soft:#1d252f;
+  --accent:#4cb3cf; --accent-ink:#0b1217; --warn:#f08a6a;
+  --ok:#55b77e; --pol:#e9a53f; --nt:#e2765d; --af:#8794a2;
+  --heat0:#1b232c; --heat1:#5fc4de; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#171e26; --ink:#e3e8ee; --muted:#93a0ae; --line:#2b3540; --soft:#1d252f;
+  --accent:#4cb3cf; --accent-ink:#0b1217; --warn:#f08a6a;
+  --ok:#55b77e; --pol:#e9a53f; --nt:#e2765d; --af:#8794a2;
+  --heat0:#1b232c; --heat1:#5fc4de; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.45}
+i.v{font-style:italic;text-transform:none;letter-spacing:0}
+.legend i.v,.kpi i.v{display:inline;width:auto;height:auto;margin:0;border:0;border-radius:0;background:none;vertical-align:baseline}
+sub.v{font-size:72%;line-height:0;vertical-align:-0.28em;text-transform:none;letter-spacing:0}
+.wrap{max-width:1360px;margin:0 auto;padding-inline:16px;padding-block:18px 40px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+h1{font-family:var(--font-display);font-weight:700;font-size:clamp(24px,3vw,32px);letter-spacing:.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;max-width:75ch}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-wrap:wrap}
+.seg button{font:600 13px var(--font-body);background:var(--panel);color:var(--muted);border:0;padding:7px 14px;cursor:pointer}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.tabs{margin-bottom:16px}
+.tabs button{font-size:14px;padding:9px 18px}
+.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.rail{display:grid;gap:12px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (max-width:900px){.rail{position:static}}
+.box,.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.box h2,.panel h2{font-family:var(--font-display);font-weight:600;font-size:17px;margin:0 0 10px;letter-spacing:.01em}
+.eyebrow{font:600 11px var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+label.fld{display:grid;gap:4px;margin-bottom:10px;font-size:13px;color:var(--muted)}
+.row{display:flex;align-items:center;gap:10px}
+.row input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
+.val{font:500 15px var(--font-data);color:var(--ink);min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums}
+select,input[type=number],input[type=text],textarea{font:14px var(--font-body);color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:7px;padding:6px 8px;width:100%;min-width:0}
+textarea{font-family:var(--font-data);font-size:12px;min-height:120px;resize:vertical}
+input.mono{font-family:var(--font-data);font-size:13px}
+input.bad{border-color:var(--warn);background:color-mix(in oklab,var(--warn) 8%,var(--soft))}
+.range2{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.btn{font:600 14px var(--font-body);border-radius:8px;padding:8px 12px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn.sm{font-size:12.5px;padding:4px 9px}
+.btn.icon{padding:3px 8px;font-size:13px;line-height:1.2}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.status{font:12px var(--font-data);color:var(--muted);margin-top:8px}
+.note{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.main{display:grid;gap:16px;min-width:0}
+.summary{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:10px;padding:16px 18px;display:grid;gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi .n{font:500 26px var(--font-data);font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .s{font-size:12px;color:var(--muted)}
+.chip{display:inline-block;font:600 12px var(--font-body);padding:2px 8px;border-radius:999px;border:1px solid currentColor}
+.chip.good{color:var(--ok)} .chip.bad{color:var(--nt)} .chip.info{color:var(--muted)}
+.advice{margin:0;padding-left:18px;display:grid;gap:6px;max-width:95ch}
+.advice b{font-weight:600}
+.panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.panels{grid-template-columns:minmax(0,1fr)}}
+.panel .hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.panel p.cap{font-size:12.5px;color:var(--muted);margin:2px 0 8px}
+.chart{width:100%;overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+svg text{fill:var(--muted);font-family:var(--font-data);font-size:11px}
+svg .lbl{fill:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.cell{cursor:pointer}
+.cell:hover{stroke:var(--ink);stroke-width:1}
+table.tr{width:100%;border-collapse:collapse;font-size:13px}
+table.tr th,table.tr td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+table.tr td.num{font-family:var(--font-data);font-variant-numeric:tabular-nums;text-align:right}
+table.tr th{font-weight:600;color:var(--muted);font-size:12px}
+.pdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.inspect-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.inspect-ctl input{width:9em}
+.steps{margin:8px 0 0;padding-left:18px;font-size:13px;display:grid;gap:3px}
+.out{font-weight:600}
+.pollist{display:grid;gap:6px}
+.polrow{display:grid;grid-template-columns:auto auto 1fr auto auto;gap:8px;align-items:center;font-size:14px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--soft)}
+.polrow.off{opacity:.55}
+.polrow .rank{font:500 12px var(--font-data);color:var(--muted);min-width:1.6em}
+.in-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.in-grid{grid-template-columns:minmax(0,1fr)}}
+.edit td{padding:4px 4px}
+.edit input,.edit select{padding:5px 6px;font-size:13px}
+.edit .w-id{width:5.5em}.edit .w-node{width:6.5em}.edit .w-lead{width:5em}
+.msgs{margin:8px 0 0;padding-left:18px;font-size:13px;color:var(--warn);display:grid;gap:2px}
+.msgs.ok{color:var(--ok)}
+.flag{font-size:12.5px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--soft);margin-top:8px}
+footer{color:var(--muted);font-size:12.5px;margin-top:18px;max-width:110ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow" data-t="eyebrow"></div>
+      <h1 data-t="title"></h1>
+      <p class="sub" data-t="subtitle"></p>
+    </div>
+    <div class="seg" role="group" aria-label="Language">
+      <button id="lang-en" aria-pressed="true">EN</button>
+      <button id="lang-zh" aria-pressed="false">中文</button>
+    </div>
+  </header>
+
+  <div class="seg tabs" role="tablist">
+    <button role="tab" id="tab-in" aria-selected="false" data-t="tabIn"></button>
+    <button role="tab" id="tab-an" aria-selected="true" data-t="tabAn"></button>
+  </div>
+
+  <!-- ===================== NETWORK INPUT ===================== -->
+  <section id="view-in" hidden>
+        <section class="box" style="margin-bottom:16px">
+          <h2 data-t="diagHd"></h2>
+          <div class="chart" id="diagram"></div>
+          <div class="legend" id="diag-leg"></div>
+          <div class="flag" id="disjoint-flag"></div>
+        </section>
+    <div class="in-grid">
+      <div class="main">
+        <section class="box">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <h2 data-t="pathsHd"></h2><button class="btn ghost sm" id="add-path" data-t="addPath"></button>
+          </div>
+          <p class="note" data-t="pathsNote" style="margin:0 0 8px"></p>
+          <div class="chart"><table class="tr edit" id="path-table"></table></div>
+        </section>
+        <section class="box">
+          <h2 data-t="arcsHd"></h2>
+          <p class="note" data-t="arcsNote" style="margin:0 0 8px"></p>
+          <div class="chart"><table class="tr edit" id="arc-table"></table></div>
+        </section>
+      </div>
+      <div class="main">
+        <section class="box">
+          <h2 data-t="applyHd"></h2>
+          <div class="btns">
+            <button class="btn" id="apply" data-t="apply"></button>
+            <button class="btn ghost" id="load-lin" data-t="loadLin"></button>
+          </div>
+          <ul class="msgs" id="msgs"></ul>
+        </section>
+        <section class="box">
+          <h2 data-t="jsonHd"></h2>
+          <p class="note" data-t="jsonNote" style="margin:0 0 8px"></p>
+          <textarea id="json" spellcheck="false" aria-label="JSON"></textarea>
+          <div class="btns" style="margin-top:8px">
+            <button class="btn ghost sm" id="json-export" data-t="jsonExport"></button>
+            <button class="btn ghost sm" id="json-copy" data-t="jsonCopy"></button>
+            <button class="btn ghost sm" id="json-import" data-t="jsonImport"></button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ANALYSIS ===================== -->
+  <section id="view-an">
+    <div class="grid">
+      <aside class="rail">
+        <section class="box">
+          <h2 data-t="commitHd"></h2>
+          <label class="fld"><span data-t="demand"></span>
+            <span class="row"><input type="range" id="in-d" min="6" max="30" value="20"><span class="val" id="v-d"></span></span></label>
+          <label class="fld"><span data-t="deadline"></span>
+            <span class="row"><input type="range" id="in-T" min="6" max="20" value="15"><span class="val" id="v-T"></span></span></label>
+          <label class="fld"><span data-t="target"></span>
+            <span class="row"><input type="range" id="in-tg" min="0.50" max="0.99" step="0.01" value="0.80"><span class="val" id="v-tg"></span></span></label>
+          <div class="eyebrow" data-t="rangeHd" style="margin:4px 0 6px"></div>
+          <div class="range2">
+            <span>d</span><span class="row"><input type="number" id="r-d0" min="1"><span>–</span><input type="number" id="r-d1" min="1"></span>
+            <span>T</span><span class="row"><input type="number" id="r-T0" min="1"><span>–</span><input type="number" id="r-T1" min="1"></span>
+          </div>
+        </section>
+        <section class="box">
+          <h2 data-t="policyHd"></h2>
+          <label class="fld"><span data-t="ruleHd"></span><select id="in-rule"></select></label>
+          <p class="note" data-t="ruleNote" style="margin-bottom:8px"></p>
+          <div class="pollist" id="pollist"></div>
+          <p class="note" data-t="policyNote"></p>
+          <div class="btns" style="margin-top:8px">
+            <button class="btn ghost sm" id="btn-best" data-t="useBest"></button>
+            <button class="btn ghost sm" id="btn-lin" data-t="useLin"></button>
+          </div>
+        </section>
+        <section class="box">
+          <h2 data-t="simHd"></h2>
+          <label class="fld"><span data-t="trials"></span>
+            <select id="in-N"><option value="10000">10,000</option><option value="50000">50,000</option><option value="100000" selected>100,000</option></select></label>
+          <label class="fld"><span data-t="seed"></span><input type="number" id="in-seed" value="2026" min="1" step="1"></label>
+          <button class="btn" id="btn-run" data-t="rerun"></button>
+          <div class="status" id="status"></div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <section class="summary" aria-live="polite">
+          <div class="kpis">
+            <div class="kpi"><div class="eyebrow" data-t="kRel"></div><div class="n" id="k-rel"></div><div class="s" id="k-ci"></div></div>
+            <div class="kpi"><div class="eyebrow" data-t="kExact"></div><div class="n" id="k-ex"></div><div class="s" id="k-err"></div></div>
+            <div class="kpi"><div class="eyebrow" data-t="kTarget"></div><div class="n" id="k-tg"></div><div class="s" id="k-tgs"></div></div>
+            <div class="kpi"><div class="eyebrow" data-t="kRt"></div><div class="n" id="k-rt"></div><div class="s" id="k-rts"></div></div>
+          </div>
+          <div>
+            <div class="eyebrow" data-t="advHd" style="margin-bottom:6px"></div>
+            <ul class="advice" id="advice"></ul>
+          </div>
+        </section>
+
+        <div class="panels">
+          <section class="panel">
+            <div class="hd"><h2 data-t="mapHd"></h2><span class="eyebrow" id="map-pol"></span></div>
+            <p class="cap" data-t="mapCap"></p>
+            <div class="chart" id="map"></div>
+            <div class="legend" id="map-leg"></div>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="decHd"></h2><span class="eyebrow" id="dec-d"></span></div>
+            <p class="cap" data-t="decCap"></p>
+            <div class="chart" id="dec"></div>
+            <div class="legend" id="dec-leg"></div>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="rtHd"></h2><span class="eyebrow" id="rt-d"></span></div>
+            <p class="cap" data-t="rtCap"></p>
+            <div class="chart" id="rt"></div>
+            <div class="legend" id="rt-leg"></div>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="frHd"></h2><span class="eyebrow" id="fr-tg"></span></div>
+            <p class="cap" data-t="frCap"></p>
+            <div class="chart" id="fr"></div>
+            <div class="legend" id="fr-leg"></div>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="bmHd"></h2><span class="eyebrow" id="bm-n"></span></div>
+            <p class="cap" data-t="bmCap"></p>
+            <div class="chart" id="bm"></div>
+            <div class="legend" id="bm-leg"></div>
+            <p class="note" id="bm-note"></p>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="arcHd"></h2><span class="eyebrow" id="arc-sc"></span></div>
+            <p class="cap" data-t="arcCap"></p>
+            <div class="chart" id="arc"></div>
+            <div class="legend" id="arc-leg"></div>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="polHd"></h2><span class="eyebrow" id="pol-sc"></span></div>
+            <p class="cap" id="pol-cap"></p>
+            <div class="chart" id="pol"></div>
+          </section>
+          <section class="panel">
+            <div class="hd"><h2 data-t="rulesHd"></h2><span class="eyebrow" id="rules-sc"></span></div>
+            <p class="cap" data-t="rulesCap"></p>
+            <div class="chart" id="rules"></div>
+            <div class="legend" id="rules-leg"></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="hd"><h2 data-t="insHd"></h2></div>
+          <p class="cap" data-t="insCap"></p>
+          <div class="inspect-ctl">
+            <label for="in-k" class="eyebrow" data-t="trialNo"></label>
+            <input type="number" id="in-k" min="1" value="1">
+            <button class="btn ghost sm" id="k-prev" aria-label="previous">‹</button>
+            <button class="btn ghost sm" id="k-next" aria-label="next">›</button>
+            <button class="btn ghost sm" id="k-fail" data-t="nextFail"></button>
+          </div>
+          <div class="chart"><table class="tr" id="ins-table"></table></div>
+          <ol class="steps" id="ins-steps"></ol>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+// ======================= Default network: Lin (2009), Table 1 =======================
+const LIN={
+ paths:[{id:"P1",arcs:"a1, a2, a3"},{id:"P2",arcs:"a5, a6, a7"},{id:"P3",arcs:"a9, a10, a11"}],
+ arcs:[
+  {id:"a1",lead:2,dist:"5:0.85, 3:0.05, 1:0.05, 0:0.05"},
+  {id:"a2",lead:1,dist:"5:0.80, 3:0.10, 1:0.05, 0:0.05"},
+  {id:"a3",lead:3,dist:"4:0.85, 2:0.05, 1:0.05, 0:0.05"},
+  {id:"a5",lead:2,dist:"5:0.85, 3:0.05, 1:0.05, 0:0.05"},
+  {id:"a6",lead:2,dist:"6:0.80, 4:0.05, 2:0.05, 1:0.05, 0:0.05"},
+  {id:"a7",lead:3,dist:"4:0.85, 2:0.05, 1:0.05, 0:0.05"},
+  {id:"a9",lead:2,dist:"5:0.60, 3:0.20, 2:0.10, 1:0.05, 0:0.05"},
+  {id:"a10",lead:2,dist:"7:0.65, 5:0.10, 4:0.10, 2:0.05, 1:0.05, 0:0.05"},
+  {id:"a11",lead:1,dist:"6:0.70, 4:0.10, 2:0.10, 1:0.05, 0:0.05"}],
+ range:{d0:6,d1:30,T0:6,T1:20}};
+const PALETTE=["#2f67c8","#0c8a78","#8457c2","#c0662a","#b0387a","#4f7d1f","#9a7b12","#2b8bb0","#7a4b2a","#5560c4"];
+const OUT=["ok","pol","nt","af"]; const OCOL=["var(--ok)","var(--pol)","var(--nt)","var(--af)"];
+
+// ======================= Strings =======================
+const S={
+en:{eyebrow:"Agent-based Monte Carlo · stochastic-flow network",title:"SFN Routing Reliability Console",
+subtitle:"Enter the minimal paths and each arc's lead time and capacity distribution (the network diagram is generated from the paths), then choose a delivery commitment and a routing policy. ArcAgents sample capacities, PathAgents compute transmission times and the RouterAgent applies the policy; every panel is built from the same trial log.",
+tabIn:"1  Network input",tabAn:"2  Analysis",
+nodesHd:"Nodes",nodesLbl:"Node names, separated by commas",source:"Source s",sink:"Sink t",
+arcsHd:"Arc data",arcsNote:"Every arc named in the paths appears here automatically. Enter its lead time and capacity distribution as capacity:probability pairs, e.g. 5:0.85, 3:0.05, 1:0.05, 0:0.05. Capacities are non-negative integers and probabilities must sum to 1. An arc used by several paths is the same physical arc.",
+thId:"Arc",thFrom:"Inferred from",thTo:"to",thLead:"Lead time",thDist:"Capacity distribution",thMax:"Max",thSum:"Σp",
+pathsHd:"Minimal paths",addPath:"+ Add path",pathsNote:"List the arcs of each path in order from the source s to the sink t, e.g. a1, a2, a3. The nodes and the network diagram are built from these paths, and the routing policy chooses among them.",
+thPath:"Path",thArcs:"Arcs in order",thPL:"Lead",
+diagHd:"Network diagram (generated from the paths)",applyHd:"Apply",apply:"Apply and run simulation",loadLin:"Load Lin (2009) example",
+jsonHd:"Save or share the input",jsonNote:"Export the current input as JSON to keep a copy, or paste JSON and load it.",jsonExport:"Export to box",jsonCopy:"Copy",jsonImport:"Load from box",copied:"Copied",copyFail:"Select the text and copy it manually",
+disjYes:"Paths are arc-disjoint: exact values from the closed form (Eq. 7) are shown for validation.",
+disjNo:(pairs)=>`Paths share arcs (${pairs}): the closed form (Eq. 7) does not hold, so only simulation estimates are shown.`,
+okApplied:(n,m)=>`Applied: ${n} arcs, ${m} paths. Simulation updated.`,
+err:{nodes:"Enter at least two distinct node names.",srcSnk:"Source and sink must be different nodes.",arcId:(r)=>`Arc row ${r}: enter a unique arc name.`,arcEnds:(a)=>`Arc ${a}: choose different 'from' and 'to' nodes.`,
+ lead:(a)=>`Arc ${a}: lead time must be a non-negative integer.`,dist:(a)=>`Arc ${a}: write the distribution as capacity:probability pairs.`,cap:(a)=>`Arc ${a}: capacities must be distinct non-negative integers.`,
+ sum:(a,s)=>`Arc ${a}: probabilities sum to ${s}, not 1.`,noPath:"Define at least one path.",pathId:(r)=>`Path row ${r}: enter a unique path name.`,
+ pathArc:(p,a)=>`Path ${p}: arc '${a}' appears twice.`,pathChain:(p)=>`Path ${p}: arcs must connect from the source to the sink without gaps.`,pathLoop:(p)=>`Path ${p}: with the other paths, this path revisits a node, so it is not a minimal path.`,
+ tooMany:"Use at most 10 paths and 60 arcs in this console.",json:"The box does not contain valid input JSON.",
+ noDist:(a)=>`Arc ${a}: enter its lead time and capacity distribution in the arc table.`,
+ topoLoop:(a)=>`The paths imply that arc ${a} starts and ends at the same node; check the arc order in the paths.`,
+ topoST:"The paths imply that the source and the sink are the same node; check the arc order in the paths.",
+ emptyPath:(p)=>`Path ${p}: list at least one arc.`},
+commitHd:"Delivery commitment",demand:"Demand d (units)",deadline:"Time threshold T",target:"Required reliability",rangeHd:"Map range",
+policyHd:"Routing policy",policyNote:"Tick the paths to use and order them by priority. The demand goes to the first operational path; a backup is used only when the current path has physically failed (Lin, 2009).",
+useBest:"Use best compared policy",useLin:"Use Lin's rule",simHd:"Simulation",trials:"Trials N",seed:"Random seed",rerun:"Re-run simulation",
+kRel:"Estimated reliability",kExact:"Exact value (Eq. 7)",kTarget:"Against requirement",kPol:"Policy-induced loss",kPolS:"of trials: assigned path too slow, another path could deliver",
+kRt:"With real-time routing",rtS:(g,p)=>`+${g} over the current policy (recovers the ${p} policy-induced failures)`,
+rtHd:"Value of real-time routing",rtCap:"Upper bound if the router could see every path's state and send the demand to any path that can deliver in time, compared with the static policy. The shaded gap is the most that real-time monitoring and switching could add.",
+rtStatic:"static policy",rtBound:"real-time routing bound",rtGap:"value of real-time information",
+frHd:"What can be promised",frCap:"Largest demand d that meets the required reliability for each time threshold T. Use it to quote quantities and due dates to customers.",
+frSel:"selected policy",frBest:"best static policy",frRt:"real-time routing",frNone:"no d in the map range meets the requirement",
+bmHd:"Best policy by commitment",bmCap:"For each (d, T), the full priority order (all paths used) with the highest reliability; exact values decide when the closed form applies, otherwise estimates with a 0.005 tolerance. Ties go to Lin's rule. Dots mark cells where Lin's rule is not best.",
+bmNone:"zero reliability",bmTie:"all orders equal",
+bmLin:(a,b)=>`Lin's rule is the best full priority order in ${a} of ${b} cells with positive reliability.`,
+bmExact:(a,b)=>` (Decided by the exact closed form.)`,
+bmWhy:" When all paths have the same probability of physical failure, ranking paths by their probability of delivering in time is optimal; with unequal failure probabilities the rule can be beaten.",
+na:"n/a",naS:"paths share arcs; closed form not valid",
+advHd:"Decision summary",mapHd:"Reliability map",mapCap:"Estimated reliability for every (d, T) under the selected policy. Click a cell to change the commitment. Dots mark cells that meet the requirement.",
+decHd:"Why deliveries fail",decCap:"Share of trials by outcome for each T at the selected demand. Only policy-induced failures can be removed by changing the routing rule.",
+arcHd:"Where to upgrade",arcCap:"Gain in reliability if one arc always operated at its maximum capacity (same sampled states). Ticks show the exact gain when the closed form applies.",
+polHd:"Compare routing policies",polCapAll:(n)=>`All ${n} priority orders at the current commitment, with 95% intervals; ticks show exact values when available. Click a row to select the policy.`,
+polCapSome:"With more than four paths, the selected policy is compared with Lin's rule and the shortest-lead-time order. Click a row to select the policy.",
+insHd:"Trial inspector",insCap:"Trace one trial through the agents to see how the outcome was produced.",trialNo:"Trial",nextFail:"Next failed trial",
+o_ok:"Success",o_pol:"Policy-induced failure",o_nt:"No timely path",o_af:"All paths failed",
+meets:"meets",below:"below",ci:"95% CI",errL:"abs. error",meetsLeg:"meets requirement",exactTick:"exact",
+linRule:"Lin's rule",ruleHd:"Routing rule (RouterAgent)",rule_static:"Static priority (Lin, 2009)",rule_maxb:"Maximum bottleneck",rule_quick:"Quickest path",ruleInfo_static:"needs only whether each path has failed",ruleInfo_maxb:"needs the current bottleneck capacities",ruleInfo_quick:"needs capacities and lead times",ruleNote:"Static priority follows the order below. The other two rules choose among the ticked paths that are operating, and the order only breaks ties.",rulesHd:"Compare routing rules",rulesCap:"Outcome shares of the three RouterAgent rules at the current commitment. No timely path and all paths failed are the same for every rule, so a better rule can only recover policy-induced failures. Ticks show exact reliability. Click a row to use that rule.",stepRule:(r,p,ok)=>p==null?`RouterAgent (${r}) found no operating path.`:`RouterAgent (${r}) compared the operating paths and assigned the demand to ${p}${ok?", which delivers in time.":", which is too slow."}`,advRule:(r,v,g)=>`Under the ${r} rule the estimate is ${v}${g}.`,leadRule:"shortest lead first",
+pathTh:"Path",capTh:"Arc capacities",bTh:"b",wTh:"w",okTh:"Delivers by T?",opTh:"Operational?",yes:"yes",no:"no",
+step1:(k)=>`ArcAgents sampled the capacities of trial ${k}.`,
+stepPath:(p,b,w,T)=>b===0?`PathAgent ${p}: an arc has zero capacity, so the path has physically failed.`:`PathAgent ${p}: b = ${b}, w = ${w} ${w<=T?"≤":">"} T = ${T}.`,
+stepRoute:(p,ok)=>`RouterAgent assigned the demand to ${p}${ok?", which delivers in time.":", which is operating but too slow; no switching occurs."}`,
+stepSkip:(p)=>`RouterAgent skipped ${p} because it has physically failed.`,stepNone:"Every path in the policy has physically failed.",outcome:"Outcome",
+adv:{rel:(pol,r,lo,hi,d,T)=>`Under <b>${pol}</b>, the estimated probability of delivering <b>${d}</b> units within <b>T = ${T}</b> is <b>${r}</b> (95% CI ${lo}–${hi}).`,
+ best:(pol,r,g)=>`Among the compared policies, <b>${pol}</b> is best (${r}); switching would add about <b>${g}</b>.`,
+ isBest:"The selected policy is the best of the compared policies for this commitment.",
+ loss:(name,v)=>`The largest loss is <b>${name}</b> (${v} of trials).`,
+ lossPol:"These trials could have succeeded on another path, so a different priority order or a state-dependent rule can recover part of them.",
+ lossCap:"No priority order over the defined paths can recover these trials; they require more capacity or shorter lead times.",
+ arc:(list,g)=>`Most effective single-arc upgrade: <b>${list}</b> (+${g}).`,
+ minT:(d,T,tg)=>`For d = ${d}, the shortest time threshold in the map range that meets ${tg} under this policy is <b>T = ${T}</b>.`,
+ noT:(d,tg)=>`For d = ${d}, no T in the map range meets ${tg} under this policy.`,
+ noRel:"Reliability is zero here: T is too short for any path to deliver d units.",
+ rt:(r,g)=>`If the router could switch to any path that can deliver in time, reliability would reach <b>${r}</b> (<b>+${g}</b>). This is the most that real-time monitoring can add under this commitment.`,
+ promise:(T,a,b)=>`At T = ${T}, the largest demand that meets the requirement is <b>${a}</b> under the selected policy and <b>${b}</b> with real-time routing.`,
+ promiseNone:(T)=>`At T = ${T}, no demand in the map range meets the requirement under the selected policy.`},
+footer:(lin)=>`Arcs are labelled a; the network diagram is generated from the paths, with only the source s and sink t labelled. Assumptions: nodes are perfectly reliable, arc capacities are statistically independent, the demand is sent through a single path, and arcs outside the defined paths are not used (Lin, 2009). ${lin?"The default input is the Lin (2009) benchmark; its cross arcs a4, a8 and a12 are omitted because the routing policies do not use them. ":""}Estimates come from one seeded run with common random numbers shared by all policies and scenarios, so results are reproducible and conclusions apply within the examined range.`},
+zh:{eyebrow:"代理人蒙地卡羅模擬 · 隨機流量網路",title:"SFN 路由可靠度決策儀表板",
+subtitle:"先輸入最小路徑，以及各弧的前置時間與容量機率分配（網路圖依路徑自動產生），再選擇交貨承諾與路由策略。ArcAgent 抽樣弧容量、PathAgent 計算傳送時間、RouterAgent 執行策略；所有面板皆來自同一份試驗紀錄。",
+tabIn:"1  網路輸入",tabAn:"2  分析",
+nodesHd:"節點",nodesLbl:"節點名稱，以逗號分隔",source:"起點 s",sink:"終點 t",
+arcsHd:"弧資料",arcsNote:"路徑中出現的每條弧都會自動列在這裡。請輸入前置時間與容量分配（「容量:機率」，以逗號分隔），例如 5:0.85, 3:0.05, 1:0.05, 0:0.05。容量須為非負整數，機率總和須為 1。被多條路徑使用的弧視為同一條實體弧。",
+thId:"弧",thFrom:"推得起點",thTo:"迄點",thLead:"前置時間",thDist:"容量分配",thMax:"最大",thSum:"Σp",
+pathsHd:"最小路徑",addPath:"+ 新增路徑",pathsNote:"依序列出每條路徑由起點 s 到終點 t 經過的弧，例如 a1, a2, a3。節點與網路圖會依路徑自動產生，路由策略也在這些路徑中選擇。",
+thPath:"路徑",thArcs:"依序經過的弧",thPL:"前置",
+diagHd:"網路圖（依路徑自動產生）",applyHd:"套用",apply:"套用並執行模擬",loadLin:"載入 Lin (2009) 範例",
+jsonHd:"儲存或分享輸入",jsonNote:"將目前輸入匯出成 JSON 保存，或貼上 JSON 後載入。",jsonExport:"匯出到文字框",jsonCopy:"複製",jsonImport:"從文字框載入",copied:"已複製",copyFail:"請手動選取文字並複製",
+disjYes:"路徑彼此弧互斥：顯示封閉解（Eq. 7）的精確值作為驗證。",
+disjNo:(pairs)=>`路徑共用弧（${pairs}）：封閉解（Eq. 7）不成立，僅顯示模擬估計值。`,
+okApplied:(n,m)=>`已套用：${n} 條弧、${m} 條路徑，模擬已更新。`,
+err:{nodes:"請輸入至少兩個不同的節點名稱。",srcSnk:"起點與終點必須是不同節點。",arcId:(r)=>`第 ${r} 列弧：請輸入不重複的弧名稱。`,arcEnds:(a)=>`弧 ${a}：起點與迄點必須不同。`,
+ lead:(a)=>`弧 ${a}：前置時間須為非負整數。`,dist:(a)=>`弧 ${a}：請以「容量:機率」格式輸入分配。`,cap:(a)=>`弧 ${a}：容量須為不重複的非負整數。`,
+ sum:(a,s)=>`弧 ${a}：機率總和為 ${s}，不等於 1。`,noPath:"請至少定義一條路徑。",pathId:(r)=>`第 ${r} 列路徑：請輸入不重複的路徑名稱。`,
+ pathArc:(p,a)=>`路徑 ${p}：弧「${a}」重複出現。`,pathChain:(p)=>`路徑 ${p}：弧必須由起點連續接到終點。`,pathLoop:(p)=>`路徑 ${p}：與其他路徑合併後會重複經過節點，因此不是最小路徑。`,
+ tooMany:"本儀表板最多支援 10 條路徑與 60 條弧。",json:"文字框內容不是有效的輸入 JSON。",
+ noDist:(a)=>`弧 ${a}：請在弧資料表輸入前置時間與容量分配。`,
+ topoLoop:(a)=>`依路徑推得弧 ${a} 的起點與終點是同一節點，請檢查路徑中弧的順序。`,
+ topoST:"依路徑推得起點與終點是同一節點，請檢查路徑中弧的順序。",
+ emptyPath:(p)=>`路徑 ${p}：請至少列出一條弧。`},
+commitHd:"交貨承諾",demand:"需求量 d（單位）",deadline:"時間門檻 T",target:"要求可靠度",rangeHd:"地圖範圍",
+policyHd:"路由策略",policyNote:"勾選要使用的路徑並調整優先順序。需求先交給第一條可運作的路徑；只有當目前路徑實體失效時才啟用備援路徑（Lin, 2009）。",
+useBest:"採用比較中最佳的策略",useLin:"採用 Lin 的排序規則",simHd:"模擬設定",trials:"試驗次數 N",seed:"亂數種子",rerun:"重新模擬",
+kRel:"估計可靠度",kExact:"精確值（Eq. 7）",kTarget:"與要求比較",kPol:"策略導致的損失",kPolS:"的試驗：指派路徑太慢，但另一路徑可準時送達",
+kRt:"採即時路由時",rtS:(g,p)=>`較目前策略 +${g}（挽回 ${p} 的策略導致失敗）`,
+rtHd:"即時路由的價值",rtCap:"若路由者能看到每條路徑的即時狀態，並把需求交給任一能準時送達的路徑，可靠度的上限與固定順序策略的比較。陰影差距即即時監控與切換最多能增加的可靠度。",
+rtStatic:"固定順序策略",rtBound:"即時路由上限",rtGap:"即時資訊的價值",
+frHd:"可承諾的量與交期",frCap:"各時間門檻 T 下，仍能達到要求可靠度的最大需求量 d。可用於向客戶報價數量與交期。",
+frSel:"目前策略",frBest:"最佳固定策略",frRt:"即時路由",frNone:"地圖範圍內沒有任何 d 能達到要求",
+bmHd:"各承諾下的最佳策略",bmCap:"每個 (d, T) 下可靠度最高的完整優先順序（使用所有路徑）；封閉解成立時以精確值判斷，否則以估計值並容許 0.005 誤差。同分時採 Lin 的規則。圓點表示 Lin 的規則不是最佳的格子。",
+bmNone:"可靠度為 0",bmTie:"各順序相同",
+bmLin:(a,b)=>`在 ${b} 個可靠度大於 0 的格子中，Lin 的規則有 ${a} 格是最佳的完整優先順序。`,
+bmExact:(a,b)=>`（以精確封閉解判斷。）`,
+bmWhy:"當各路徑實體失效機率相同時，依準時送達機率排序即為最佳；若失效機率不同，此規則可能不是最佳。",
+na:"不適用",naS:"路徑共用弧，封閉解不成立",
+advHd:"決策摘要",mapHd:"可靠度地圖",mapCap:"所選策略下各 (d, T) 的估計可靠度。點選格子可改變承諾；圓點表示達到要求可靠度。",
+decHd:"交貨失敗的原因",decCap:"在目前需求量下，各 T 的試驗結果比例。只有策略導致的失敗能透過調整路由規則消除。",
+arcHd:"優先升級哪條弧",arcCap:"若某條弧永遠以最大容量運作，可靠度可提高多少（使用相同抽樣狀態）。封閉解成立時，刻度為精確增量。",
+polHd:"比較路由策略",polCapAll:(n)=>`目前承諾下全部 ${n} 種優先順序，含 95% 信賴區間；有精確值時以刻度標示。點選列即可採用該策略。`,
+polCapSome:"路徑超過四條時，只比較目前策略、Lin 的排序規則與前置時間由短到長的順序。點選列即可採用該策略。",
+insHd:"單次試驗追蹤",insCap:"追蹤單一試驗在各 agent 間的運作，檢視結果如何產生。",trialNo:"試驗",nextFail:"下一筆失敗試驗",
+o_ok:"成功",o_pol:"策略導致失敗",o_nt:"無可準時路徑",o_af:"所有路徑失效",
+meets:"達到",below:"未達",ci:"95% 信賴區間",errL:"絕對誤差",meetsLeg:"達到要求",exactTick:"精確值",
+linRule:"Lin 的規則",ruleHd:"路由規則（RouterAgent）",rule_static:"固定優先順序（Lin, 2009）",rule_maxb:"最大瓶頸容量",rule_quick:"最快路徑",ruleInfo_static:"只需知道各路徑是否失效",ruleInfo_maxb:"需觀察各路徑當下的瓶頸容量",ruleInfo_quick:"需觀察容量與前置時間",ruleNote:"固定優先順序依下方順序派送。其他兩個規則在勾選且可運作的路徑中選擇，下方順序只用於平手時。",rulesHd:"比較路由規則",rulesCap:"在目前承諾下，三種 RouterAgent 規則的試驗結果比例。「無準時路徑」與「所有路徑失效」在各規則下相同，因此較佳的規則只能挽回策略導致的失敗。刻度為精確可靠度。點選列可改用該規則。",stepRule:(r,p,ok)=>p==null?`RouterAgent（${r}）找不到可運作的路徑。`:`RouterAgent（${r}）比較可運作的路徑後，將需求指派給 ${p}${ok?"，可準時送達。":"，但太慢。"}`,advRule:(r,v,g)=>`採用${r}規則時，估計可靠度為 ${v}${g}。`,leadRule:"前置時間短者優先",
+pathTh:"路徑",capTh:"弧容量",bTh:"b",wTh:"w",okTh:"能於 T 內送達？",opTh:"可運作？",yes:"是",no:"否",
+step1:(k)=>`ArcAgent 抽樣第 ${k} 次試驗的弧容量。`,
+stepPath:(p,b,w,T)=>b===0?`PathAgent ${p}：有弧容量為 0，路徑實體失效。`:`PathAgent ${p}：b = ${b}，w = ${w} ${w<=T?"≤":">"} T = ${T}。`,
+stepRoute:(p,ok)=>`RouterAgent 將需求指派給 ${p}${ok?"，可準時送達。":"，路徑可運作但太慢；策略不切換。"}`,
+stepSkip:(p)=>`RouterAgent 跳過 ${p}，因為該路徑實體失效。`,stepNone:"策略中的所有路徑皆實體失效。",outcome:"結果",
+adv:{rel:(pol,r,lo,hi,d,T)=>`在 <b>${pol}</b> 下，於 <b>T = ${T}</b> 內送達 <b>${d}</b> 單位的估計機率為 <b>${r}</b>（95% 信賴區間 ${lo}–${hi}）。`,
+ best:(pol,r,g)=>`在比較的策略中，<b>${pol}</b> 最佳（${r}），改用可提高約 <b>${g}</b>。`,
+ isBest:"目前策略已是比較策略中最好的。",
+ loss:(name,v)=>`最大的損失來源是 <b>${name}</b>（占 ${v} 的試驗）。`,
+ lossPol:"這些試驗原本可由其他路徑完成，調整優先順序或採用依狀態切換的規則可挽回一部分。",
+ lossCap:"調整既定路徑的優先順序無法挽回這些試驗，需要提高容量或縮短前置時間。",
+ arc:(list,g)=>`單一弧升級效果最大者：<b>${list}</b>（+${g}）。`,
+ minT:(d,T,tg)=>`d = ${d} 時，此策略在地圖範圍內達到 ${tg} 的最短時間門檻為 <b>T = ${T}</b>。`,
+ noT:(d,tg)=>`d = ${d} 時，地圖範圍內沒有任何 T 能讓此策略達到 ${tg}。`,
+ noRel:"此處可靠度為 0：T 太短，任何路徑都無法送達 d 單位。",
+ rt:(r,g)=>`若路由者能切換到任一可準時送達的路徑，可靠度可達 <b>${r}</b>（<b>+${g}</b>），這是即時監控在此承諾下最多能增加的幅度。`,
+ promise:(T,a,b)=>`T = ${T} 時，達到要求的最大需求量：目前策略為 <b>${a}</b>，採即時路由為 <b>${b}</b>。`,
+ promiseNone:(T)=>`T = ${T} 時，目前策略在地圖範圍內沒有任何需求量能達到要求。`},
+footer:(lin)=>`弧以 a 標示；網路圖依路徑自動產生，只標示起點 s 與終點 t。假設：節點完全可靠、弧容量彼此獨立、需求只經單一路徑傳送、不使用路徑以外的弧（Lin, 2009）。${lin?"預設輸入為 Lin (2009) 基準網路；橫向弧 a4、a8、a12 因路由策略不使用而省略。":""}估計值來自單一固定種子的模擬，所有策略與情境共用相同的隨機數，因此結果可重現，結論僅適用於所檢驗的範圍。`}};
+let L="en"; const t=k=>S[L][k];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ======================= Network model =======================
+let RAW=JSON.parse(JSON.stringify(LIN));   // editable input
+let NET=null;                               // compiled network
+let isLin=true;
+function parseDist(s){const parts=String(s).split(",").map(x=>x.trim()).filter(Boolean);const out=[];
+  for(const p of parts){const m=p.match(/^(-?\d+(?:\.\d+)?)\s*:\s*(\d*\.?\d+(?:e-?\d+)?)$/i);if(!m)return null;out.push([+m[1],+m[2]])}return out.length?out:null}
+const splitArcs=s=>String(s||"").split(/[,\s→>]+/).map(x=>x.trim()).filter(Boolean);
+// Build the network from the paths: consecutive arcs share a node, the first arc leaves s, the last arc enters t.
+function infer(raw){
+  const par={}; const f=x=>{while(par[x]!==x){par[x]=par[par[x]];x=par[x]}return x};
+  const mk=x=>{if(!(x in par))par[x]=x}; const un=(a,b)=>{mk(a);mk(b);par[f(a)]=f(b)};
+  mk("S");mk("T"); const P=raw.paths.map(p=>({id:String(p.id||"").trim(),arcs:splitArcs(p.arcs)}));
+  const order=[]; P.forEach(p=>p.arcs.forEach(a=>{if(!order.includes(a))order.push(a)}));
+  order.forEach(a=>{mk("t:"+a);mk("h:"+a)});
+  P.forEach(p=>{if(!p.arcs.length)return;un("t:"+p.arcs[0],"S");un("h:"+p.arcs[p.arcs.length-1],"T");for(let k=1;k<p.arcs.length;k++)un("h:"+p.arcs[k-1],"t:"+p.arcs[k])});
+  const errs=[],E=S[L].err; if(f("S")===f("T"))errs.push(E.topoST);
+  const label={}; label[f("S")]="s"; label[f("T")]="t"; let n=0;
+  P.forEach(p=>p.arcs.forEach(a=>{[f("t:"+a),f("h:"+a)].forEach(r=>{if(!(r in label))label[r]="v"+(++n)})}));
+  const ends={}; order.forEach(a=>{const u=label[f("t:"+a)],v=label[f("h:"+a)];ends[a]={from:u,to:v};if(u===v)errs.push(E.topoLoop(a))});
+  const nodes=["s",...Array.from({length:n},(_,i)=>"v"+(i+1)),"t"];
+  return{P,order,ends,nodes,errs};
+}
+function compile(raw){
+  const E=S[L].err, errs=[], I=infer(raw); errs.push(...I.errs);
+  if(!raw.paths.length)errs.push(E.noPath);
+  const pids=new Set(); I.P.forEach((p,r)=>{if(!p.id||pids.has(p.id))errs.push(E.pathId(r+1));pids.add(p.id);if(!p.arcs.length)errs.push(E.emptyPath(p.id||r+1));
+    if(new Set(p.arcs).size!==p.arcs.length)errs.push(E.pathArc(p.id,p.arcs.find((a,i)=>p.arcs.indexOf(a)!==i)))});
+  const arcs=[];
+  I.order.forEach(id=>{const a=raw.arcs.find(x=>x.id===id); if(!a){errs.push(E.noDist(id));return}
+    const lead=Number(a.lead); if(a.lead===""||!Number.isInteger(lead)||lead<0)errs.push(E.lead(id));
+    const d=parseDist(a.dist); if(!d){errs.push(E.noDist(id));return}
+    const caps=d.map(x=>x[0]); if(caps.some(c=>!Number.isInteger(c)||c<0)||new Set(caps).size!==caps.length)errs.push(E.cap(id));
+    const sum=d.reduce((s,x)=>s+x[1],0); if(Math.abs(sum-1)>1e-6)errs.push(E.sum(id,sum.toFixed(4)));
+    d.sort((x,y)=>y[0]-x[0]); arcs.push({id,from:I.ends[id].from,to:I.ends[id].to,lead,cap:d.map(x=>x[0]),pr:d.map(x=>x[1])})});
+  if(I.P.length>10||arcs.length>60)errs.push(E.tooMany);
+  if(errs.length)return{errs:[...new Set(errs)]};
+  const paths=I.P.map(p=>{const idx=p.arcs.map(a=>arcs.findIndex(x=>x.id===a));return{id:p.id,arcs:idx,lead:idx.reduce((s,i)=>s+arcs[i].lead,0)}});
+  for(const p of paths){const seen=["s",...p.arcs.map(i=>arcs[i].to)];if(new Set(seen).size!==seen.length)return{errs:[E.pathLoop(p.id)]}}
+  const shared=[]; for(let a=0;a<paths.length;a++)for(let b=a+1;b<paths.length;b++){if(paths[a].arcs.some(i=>paths[b].arcs.includes(i)))shared.push(paths[a].id+"–"+paths[b].id)}
+  const used=arcs.map((a,i)=>i);
+  return{net:{nodes:I.nodes,source:"s",sink:"t",arcs,paths,used,disjoint:shared.length===0,shared}};
+}
+const pcol=j=>PALETTE[j%PALETTE.length];
+
+// ======================= Simulation: ArcAgents & PathAgents =======================
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let SIM=null;
+function runSim(N,seed){
+  const t0=performance.now(), rnd=mulberry32(seed>>>0), A=NET.arcs, nA=A.length, P=NET.paths, m=P.length;
+  const caps=new Uint8Array(N*nA); const cum=A.map(a=>{let s=0;return a.pr.map(p=>s+=p)});
+  const base=new Map(), forced=A.map(()=>new Map()); const b=new Array(m);
+  const add=(map,v)=>{const k=v.join(",");const e=map.get(k);if(e)e.c++;else map.set(k,{b:v.slice(),c:1})};
+  for(let k=0;k<N;k++){const o=k*nA;
+    for(let i=0;i<nA;i++){const u=rnd(),c=cum[i];let l=0;while(l<c.length-1&&u>=c[l])l++;caps[o+i]=Math.min(255,A[i].cap[l])}
+    for(let j=0;j<m;j++){let x=1e9;for(const i of P[j].arcs)x=Math.min(x,caps[o+i]);b[j]=x}
+    add(base,b);
+    for(const f of NET.used){const bb=b.slice();for(let j=0;j<m;j++){if(!P[j].arcs.includes(f))continue;let x=1e9;for(const i of P[j].arcs)x=Math.min(x,i===f?A[i].cap[0]:caps[o+i]);bb[j]=x}add(forced[f],bb)}
+  }
+  SIM={id:Math.random(),N,seed,caps,base:[...base.values()],forced:forced.map(mp=>[...mp.values()]),ms:performance.now()-t0};
+}
+// ======================= RouterAgent & aggregation =======================
+const okPath=(b,j,d,T)=>{const s=T-NET.paths[j].lead;return b>0&&s>0&&b>=Math.ceil(d/s)};
+const RULES=["static","maxb","quick"];
+function select(b,pol,d,T,rule){let as=-1,best=null;for(const j of pol){if(!(b[j]>0))continue;if(rule==="static")return j;const key=rule==="maxb"?-b[j]:NET.paths[j].lead+Math.ceil(d/b[j]);if(best===null||key<best){best=key;as=j}}return as}
+function outcome(b,pol,d,T,rule=state.rule){const as=select(b,pol,d,T,rule);
+  if(as>=0&&okPath(b[as],as,d,T))return 0; const m=b.length;
+  for(let j=0;j<m;j++)if(okPath(b[j],j,d,T))return 1;
+  for(let j=0;j<m;j++)if(b[j]>0)return 2; return 3}
+function decomp(list,pol,d,T,rule=state.rule){const o=[0,0,0,0];for(const e of list)o[outcome(e.b,pol,d,T,rule)]+=e.c;return o.map(x=>x/SIM.N)}
+// ======================= Exact (closed form; arc-disjoint only) =======================
+function geP(i,u,force){const a=NET.arcs[i];if(force===i)return a.cap[0]>=u?1:0;let s=0;a.cap.forEach((c,l)=>{if(c>=u)s+=a.pr[l]});return s}
+function rq(d,T,force){return NET.paths.map(p=>{const s=T-p.lead;const r=s<=0?0:p.arcs.reduce((x,i)=>x*geP(i,Math.ceil(d/s),force),1);const q=1-p.arcs.reduce((x,i)=>x*geP(i,1,force),1);return{r,q}})}
+function exactR(pol,d,T,force){if(!NET.disjoint)return null;const v=rq(d,T,force);let tot=0,pf=1;for(const j of pol){tot+=pf*v[j].r;pf*=v[j].q}return tot}
+function pathDist(j,force){const p=NET.paths[j];const lv=[...new Set(p.arcs.flatMap(i=>NET.arcs[i].cap))].sort((a,b)=>a-b);const ge=u=>p.arcs.reduce((x,i)=>x*geP(i,u,force),1);return lv.map((u,k)=>({b:u,p:ge(u)-(k+1<lv.length?ge(lv[k+1]):0)})).filter(z=>z.p>1e-15)}
+function exactRule(pol,d,T,force,rule=state.rule){if(!NET.disjoint)return null;if(rule==="static")return exactR(pol,d,T,force);if(rule==="quick"){const v=rq(d,T,force);return 1-pol.reduce((x,j)=>x*(1-v[j].r),1)}const D=pol.map(j=>pathDist(j,force)),b=new Array(NET.paths.length).fill(0);let tot=0;const rec=(k,pr)=>{if(k===pol.length){const as=select(b,pol,d,T,"maxb");if(as>=0&&okPath(b[as],as,d,T))tot+=pr;return}for(const z of D[k]){b[pol[k]]=z.b;rec(k+1,pr*z.p)}};rec(0,1);return tot}
+const curName=()=>state.rule==="static"?pname(state.pol):t("rule_"+state.rule);
+// ======================= Policies =======================
+const pname=pol=>pol.map(j=>NET.paths[j].id).join("→");
+function linRule(d,T){const v=NET.disjoint?rq(d,T).map(x=>x.r):NET.paths.map((p,j)=>SIM.base.reduce((s,e)=>s+(okPath(e.b[j],j,d,T)?e.c:0),0)/SIM.N);
+  const vr=v.map(x=>Math.round(x*1e9));return NET.paths.map((p,j)=>j).sort((a,b)=>vr[b]-vr[a]||a-b)}
+const leadRule=()=>NET.paths.map((p,j)=>j).sort((a,b)=>NET.paths[a].lead-NET.paths[b].lead||a-b);
+function candidates(){const m=NET.paths.length;
+  if(m<=4){const out=[];const rec=(cur)=>{if(cur.length)out.push(cur.slice());if(cur.length===m)return;for(let j=0;j<m;j++)if(!cur.includes(j)){cur.push(j);rec(cur);cur.pop()}};rec([]);return{all:true,list:out}}
+  const list=[state.pol.slice(),linRule(state.d,state.T),leadRule()];const seen=new Set();return{all:false,list:list.filter(p=>{const k=p.join();if(seen.has(k))return false;seen.add(k);return true})}}
+// ======================= State =======================
+let state={rule:"static",d:20,T:15,tg:0.80,pol:[2,0,1],off:[],k:1,range:{...LIN.range}};
+const f4=x=>x.toFixed(4), f3=x=>x.toFixed(3), pct=x=>(100*x).toFixed(1)+"%";
+const ciOf=(p,N)=>{const h=1.96*Math.sqrt(Math.max(p*(1-p),0)/N);return[Math.max(0,p-h),Math.min(1,p+h)]};
+
+// ======================= SVG helpers =======================
+const NS="http://www.w3.org/2000/svg";
+function el(tag,attrs,parent,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e}
+function svg(w,h,host){host.innerHTML="";return el("svg",{viewBox:`0 0 ${w} ${h}`,role:"img"},host)}
+
+// ======================= Analysis panels =======================
+function drawMap(){
+  const R=state.range, host=$("map"), dN=R.d1-R.d0+1, tN=R.T1-R.T0+1;
+  const cw=Math.max(10,Math.min(22,300/tN)), ch=Math.max(7,Math.min(15,380/dN)), ml=34,mt=8,mb=30, W=ml+tN*cw+8, H=mt+dN*ch+mb;
+  const s=svg(W,H,host), dStep=Math.ceil(dN/14), tStep=Math.ceil(tN/12);
+  for(let di=0;di<dN;di++){const d=R.d0+di;
+    if(di%dStep===0)el("text",{x:ml-6,y:mt+di*ch+ch/2+3,"text-anchor":"end"},s,d);
+    for(let ti=0;ti<tN;ti++){const T=R.T0+ti;const r=decomp(SIM.base,state.pol,d,T)[0];
+      const c=el("rect",{x:ml+ti*cw,y:mt+di*ch,width:cw-1,height:ch-1,class:"cell",style:`fill:color-mix(in oklab, var(--heat1) ${Math.round(r*100)}%, var(--heat0))`},s);
+      el("title",{},c,`d=${d}, T=${T}: ${f4(r)}`);
+      c.addEventListener("click",()=>{state.d=d;state.T=T;syncInputs();renderAll()});
+      if(r>=state.tg)el("circle",{cx:ml+ti*cw+cw/2-.5,cy:mt+di*ch+ch/2-.5,r:Math.min(1.8,ch/5),style:`fill:${r>0.6?"var(--heat0)":"var(--ink)"}`,"pointer-events":"none"},s);
+      if(d===state.d&&T===state.T)el("rect",{x:ml+ti*cw-1,y:mt+di*ch-1,width:cw+1,height:ch+1,style:"fill:none;stroke:var(--pol);stroke-width:2.5","pointer-events":"none"},s);
+    }}
+  for(let ti=0;ti<tN;ti+=tStep){el("text",{x:ml+ti*cw+cw/2,y:mt+dN*ch+12,"text-anchor":"middle"},s,R.T0+ti)}
+  el("text",{x:ml+tN*cw/2,y:H-4,"text-anchor":"middle",class:"lbl"},s,"T");
+  el("text",{x:10,y:mt+dN*ch/2,"text-anchor":"middle",class:"lbl",transform:`rotate(-90 10 ${mt+dN*ch/2})`},s,"d");
+  $("map-pol").textContent=curName();
+  $("map-leg").innerHTML=`<span><i style="background:var(--heat0);border:1px solid var(--line)"></i>0</span><span><i style="background:color-mix(in oklab, var(--heat1) 50%, var(--heat0))"></i>0.5</span><span><i style="background:var(--heat1)"></i>1</span><span><i style="background:var(--ink);border-radius:50%;width:6px;height:6px"></i>${t("meetsLeg")} (≥ ${state.tg.toFixed(2)})</span>`;
+}
+function drawDecomp(){
+  const R=state.range, host=$("dec"), tN=R.T1-R.T0+1, gap=tN>20?2:6, bw=Math.max(6,Math.min(24,420/tN-gap));
+  const ml=34,mt=10,mb=28,W=ml+tN*(bw+gap)+6,H=230,ph=H-mt-mb, tStep=Math.ceil(tN/16);
+  const s=svg(W,H,host);
+  [0,.25,.5,.75,1].forEach(v=>{const y=mt+ph*(1-v);el("line",{x1:ml,x2:W-4,y1:y,y2:y,style:"stroke:var(--line);stroke-width:1"},s);el("text",{x:ml-5,y:y+3,"text-anchor":"end"},s,(v*100)+"%")});
+  for(let ti=0;ti<tN;ti++){const T=R.T0+ti, o=decomp(SIM.base,state.pol,state.d,T); let y0=mt+ph; const x=ml+ti*(bw+gap)+gap/2;
+    const g=el("g",{style:"cursor:pointer"},s); el("title",{},g,`T=${T}\n`+o.map((v,i)=>`${t("o_"+OUT[i])}: ${pct(v)}`).join("\n"));
+    o.forEach((v,i)=>{const h=v*ph; if(h>0)el("rect",{x,y:y0-h,width:bw,height:h,style:`fill:${OCOL[i]}`},g); y0-=h});
+    el("rect",{x,y:mt,width:bw,height:ph,style:"fill:transparent"},g);
+    g.addEventListener("click",()=>{state.T=T;syncInputs();renderAll()});
+    if(T===state.T)el("rect",{x:x-2,y:mt-3,width:bw+4,height:ph+5,style:"fill:none;stroke:var(--ink);stroke-width:1.5","pointer-events":"none"},s);
+    if(ti%tStep===0||T===state.T)el("text",{x:x+bw/2,y:mt+ph+13,"text-anchor":"middle",class:T===state.T?"lbl":""},s,T);
+  }
+  el("text",{x:ml+(W-ml)/2,y:H-3,"text-anchor":"middle",class:"lbl"},s,"T");
+  $("dec-d").textContent="d = "+state.d;
+  $("dec-leg").innerHTML=OUT.map((o,i)=>`<span><i style="background:${OCOL[i]}"></i>${t("o_"+o)}</span>`).join("");
+}
+function arcGains(){const r0=decomp(SIM.base,state.pol,state.d,state.T)[0], e0=exactRule(state.pol,state.d,state.T);
+  return NET.used.map(i=>{const a=NET.arcs[i];const pj=NET.paths.findIndex(p=>p.arcs.includes(i));
+    return{i,id:a.id,p:pj,g:decomp(SIM.forced[i],state.pol,state.d,state.T)[0]-r0,ge:e0==null?null:exactRule(state.pol,state.d,state.T,i)-e0}}).sort((x,y)=>y.g-x.g||x.i-y.i)}
+function drawArcs(){
+  const host=$("arc"), G=arcGains(), mx=Math.max(0.01,...G.map(g=>Math.max(g.g,g.ge??0)));
+  const ml=48,mr=60,rh=22,mt=6,W=460,H=mt+G.length*rh+10,pw=W-ml-mr; const s=svg(W,H,host);
+  G.forEach((g,k)=>{const y=mt+k*rh; el("text",{x:ml-6,y:y+rh/2+3,"text-anchor":"end",class:"lbl"},s,g.id);
+    const w=Math.max(0,g.g)/mx*pw; const r=el("rect",{x:ml,y:y+4,width:w,height:rh-8,rx:2,style:`fill:${pcol(g.p)}`},s); el("title",{},r,`${g.id}: +${f4(g.g)}`+(g.ge!=null?` (exact +${f4(g.ge)})`:""));
+    let xe=ml+w; if(g.ge!=null){xe=ml+Math.max(0,g.ge)/mx*pw; el("line",{x1:xe,x2:xe,y1:y+2,y2:y+rh-2,style:"stroke:var(--ink);stroke-width:2"},s)}
+    el("text",{x:Math.max(ml+w,xe)+6,y:y+rh/2+3},s,(g.g>=0?"+":"")+f4(g.g));});
+  el("line",{x1:ml,x2:ml,y1:mt,y2:mt+G.length*rh,style:"stroke:var(--line)"},s);
+  $("arc-sc").textContent=`d = ${state.d}, T = ${state.T}`;
+  $("arc-leg").innerHTML=NET.paths.map((p,j)=>`<span><i style="background:${pcol(j)}"></i>${esc(p.id)}</span>`).join("")+(NET.disjoint?`<span><i style="background:var(--ink);width:2px"></i>${t("exactTick")}</span>`:"");
+}
+// ---- managerial indicators ----
+function anyTimely(d,T){let c=0;for(const e of SIM.base){for(let j=0;j<e.b.length;j++)if(okPath(e.b[j],j,d,T)){c+=e.c;break}}return c/SIM.N}
+function candFor(d,T){const m=NET.paths.length;if(m<=4)return candidates().list;const L2=[state.pol.slice(),linRule(d,T),leadRule()];const seen=new Set();return L2.filter(q=>{const k=q.join();if(seen.has(k))return false;seen.add(k);return true})}
+let GRID=null;
+function grid(){const R=state.range,key=[SIM.seed,SIM.N,SIM.ms,R.d0,R.d1,R.T0,R.T1,NET.paths.length>4?state.pol.join():""].join("|");
+  if(GRID&&GRID.key===key)return GRID; const cells={}, m=NET.paths.length;
+  const perms=[];const rec=c=>{if(c.length===m){perms.push(c.slice());return}for(let j=0;j<m;j++)if(!c.includes(j)){c.push(j);rec(c);c.pop()}};if(m<=5)rec([]);
+  for(let d=R.d0;d<=R.d1;d++)for(let T=R.T0;T<=R.T1;T++){
+    const lin=linRule(d,T), cands=m<=5?perms:[lin,leadRule(),state.pol.length===m?state.pol:lin];
+    const val=q=>NET.disjoint?exactR(q,d,T):decomp(SIM.base,q,d,T,"static")[0], tol=NET.disjoint?1e-9:0.005;
+    let best=lin,bv=val(lin),wv=bv;for(const q of cands){const v=val(q);wv=Math.min(wv,v);if(v>bv+tol){bv=v;best=q}}
+    const br=decomp(SIM.base,best,d,T,"static")[0], lr=decomp(SIM.base,lin,d,T,"static")[0];
+    let ex=null;if(NET.disjoint)ex={best:bv,lin:exactR(lin,d,T)};
+    cells[d+","+T]={best,br,lr,rt:anyTimely(d,T),ex,linBest:best===lin,tie:bv-wv<=tol}}
+  GRID={key,cells};return GRID}
+function maxD(T,fn){let best=null;for(let d=state.range.d0;d<=state.range.d1;d++){if(fn(d)>=state.tg)best=d}return best}
+function drawRealtime(){
+  const R=state.range,host=$("rt"),tN=R.T1-R.T0+1,ml=34,mt=10,mb=28,W=460,H=220,pw=W-ml-12,ph=H-mt-mb,G=grid();
+  const x=T=>ml+(T-R.T0)/Math.max(1,tN-1)*pw, y=v=>mt+ph*(1-v);
+  const s=svg(W,H,host);
+  [0,.25,.5,.75,1].forEach(v=>{el("line",{x1:ml,x2:W-8,y1:y(v),y2:y(v),style:"stroke:var(--line)"},s);el("text",{x:ml-5,y:y(v)+3,"text-anchor":"end"},s,v.toFixed(2))});
+  const st=[],rt=[];for(let T=R.T0;T<=R.T1;T++){st.push([x(T),y(decomp(SIM.base,state.pol,state.d,T)[0])]);rt.push([x(T),y(G.cells[state.d+","+T].rt)])}
+  el("path",{d:"M"+rt.map(p=>p.join(",")).join("L")+"L"+st.slice().reverse().map(p=>p.join(",")).join("L")+"Z",style:"fill:color-mix(in oklab, var(--pol) 28%, transparent);stroke:none"},s);
+  el("path",{d:"M"+rt.map(p=>p.join(",")).join("L"),style:"fill:none;stroke:var(--ok);stroke-width:2;stroke-dasharray:5 3"},s);
+  el("path",{d:"M"+st.map(p=>p.join(",")).join("L"),style:"fill:none;stroke:var(--accent);stroke-width:2.2"},s);
+  const cs=decomp(SIM.base,state.pol,state.d,state.T)[0], cr=G.cells[state.d+","+state.T].rt;
+  el("line",{x1:x(state.T),x2:x(state.T),y1:mt,y2:mt+ph,style:"stroke:var(--ink);stroke-width:1;stroke-dasharray:2 3"},s);
+  el("circle",{cx:x(state.T),cy:y(cs),r:4,style:"fill:var(--accent)"},s);el("circle",{cx:x(state.T),cy:y(cr),r:4,style:"fill:var(--ok)"},s);
+  el("text",{x:Math.min(x(state.T)+6,W-70),y:y((cs+cr)/2)+3,class:"lbl"},s,"+"+f3(cr-cs));
+  const step=Math.ceil(tN/12);for(let T=R.T0;T<=R.T1;T+=step)el("text",{x:x(T),y:mt+ph+13,"text-anchor":"middle"},s,T);
+  el("text",{x:ml+pw/2,y:H-3,"text-anchor":"middle",class:"lbl"},s,"T");
+  $("rt-d").textContent="d = "+state.d;
+  $("rt-leg").innerHTML=`<span><i style="background:var(--accent)"></i>${esc(curName())}</span><span><i style="background:var(--ok)"></i>${t("rtBound")}</span><span><i style="background:color-mix(in oklab, var(--pol) 40%, transparent)"></i>${t("rtGap")}</span>`;
+}
+function drawFrontier(){
+  const R=state.range,host=$("fr"),tN=R.T1-R.T0+1,ml=34,mt=10,mb=28,W=460,H=220,pw=W-ml-12,ph=H-mt-mb,G=grid();
+  const x=T=>ml+(T-R.T0)/Math.max(1,tN-1)*pw, y=d=>mt+ph*(1-(d-R.d0)/Math.max(1,R.d1-R.d0));
+  const s=svg(W,H,host); const dStep=Math.max(1,Math.ceil((R.d1-R.d0)/6));
+  for(let d=R.d0;d<=R.d1;d+=dStep){el("line",{x1:ml,x2:W-8,y1:y(d),y2:y(d),style:"stroke:var(--line)"},s);el("text",{x:ml-5,y:y(d)+3,"text-anchor":"end"},s,d)}
+  const series=[["var(--accent)","",T=>maxD(T,d=>decomp(SIM.base,state.pol,d,T)[0])],["var(--p1,#2f67c8)","4 3",T=>maxD(T,d=>G.cells[d+","+T].br)],["var(--ok)","2 3",T=>maxD(T,d=>G.cells[d+","+T].rt)]];
+  series[1][0]="color-mix(in oklab, var(--ink) 55%, transparent)";
+  series.forEach(([col,dash,fn])=>{let path="",pen=false;for(let T=R.T0;T<=R.T1;T++){const v=fn(T);if(v==null){pen=false;continue}path+=(pen?"L":"M")+x(T)+","+y(v);pen=true;
+      el("circle",{cx:x(T),cy:y(v),r:2.2,style:`fill:${col}`},s)}
+    el("path",{d:path||"M0,0",style:`fill:none;stroke:${col};stroke-width:2;${dash?"stroke-dasharray:"+dash:""}`},s)});
+  el("circle",{cx:x(state.T),cy:y(state.d),r:5,style:"fill:none;stroke:var(--pol);stroke-width:2.5"},s);
+  const step=Math.ceil(tN/12);for(let T=R.T0;T<=R.T1;T+=step)el("text",{x:x(T),y:mt+ph+13,"text-anchor":"middle"},s,T);
+  el("text",{x:ml+pw/2,y:H-3,"text-anchor":"middle",class:"lbl"},s,"T");
+  el("text",{x:10,y:mt+ph/2,"text-anchor":"middle",class:"lbl",transform:`rotate(-90 10 ${mt+ph/2})`},s,"max d");
+  $("fr-tg").textContent="R ≥ "+state.tg.toFixed(2);
+  $("fr-leg").innerHTML=`<span><i style="background:var(--accent)"></i>${t("frSel")}</span><span><i style="background:color-mix(in oklab, var(--ink) 55%, transparent)"></i>${t("frBest")}</span><span><i style="background:var(--ok)"></i>${t("frRt")}</span><span><i style="background:transparent;border:2px solid var(--pol);border-radius:50%"></i>(d, T)</span><span>${L==="zh"?"位於上緣表示 ≥ "+R.d1:"top edge means ≥ "+R.d1}</span>`;
+}
+function drawBestMap(){
+  const R=state.range,host=$("bm"),dN=R.d1-R.d0+1,tN=R.T1-R.T0+1,G=grid();
+  const cw=Math.max(10,Math.min(22,300/tN)),ch=Math.max(7,Math.min(15,380/dN)),ml=34,mt=8,mb=30,W=ml+tN*cw+8,H=mt+dN*ch+mb;
+  const s=svg(W,H,host),dStep=Math.ceil(dN/14),tStep=Math.ceil(tN/12);
+  const used=new Map(); const BPAL=["#2f67c8","#0c8a78","#8457c2","#c0662a","#b0387a","#4f7d1f","#9a7b12","#2b8bb0","#7a4b2a","#5560c4","#3d8f5a","#a04545"];
+  let pos=0,linOk=0,exPos=0,exOk=0,anyTie=false;
+  for(let di=0;di<dN;di++){const d=R.d0+di;if(di%dStep===0)el("text",{x:ml-6,y:mt+di*ch+ch/2+3,"text-anchor":"end"},s,d);
+    for(let ti=0;ti<tN;ti++){const T=R.T0+ti,c=G.cells[d+","+T];let fill="var(--soft)",nm=t("bmNone");
+      if(c.br>0){pos++;if(c.linBest)linOk++;if(c.tie){nm=t("bmTie");fill="color-mix(in oklab, var(--muted) 35%, var(--panel))";anyTie=true}else{nm=pname(c.best);if(!used.has(nm))used.set(nm,BPAL[used.size%BPAL.length]);fill=used.get(nm)}}
+      if(c.ex&&c.ex.best>0){exPos++;if(c.ex.best-c.ex.lin<=1e-9)exOk++}
+      const r=el("rect",{x:ml+ti*cw,y:mt+di*ch,width:cw-1,height:ch-1,class:"cell",style:`fill:${fill}`},s);el("title",{},r,`d=${d}, T=${T}: ${nm} (${f4(Math.max(c.br,0))})`);
+      r.addEventListener("click",()=>{state.d=d;state.T=T;if(c.best)setPolicy(c.best);syncInputs();renderAll()});
+      if(c.br>0&&!c.linBest)el("circle",{cx:ml+ti*cw+cw/2-.5,cy:mt+di*ch+ch/2-.5,r:Math.min(2.2,ch/4),style:"fill:var(--panel)","pointer-events":"none"},s);
+      if(d===state.d&&T===state.T)el("rect",{x:ml+ti*cw-1,y:mt+di*ch-1,width:cw+1,height:ch+1,style:"fill:none;stroke:var(--ink);stroke-width:2.5","pointer-events":"none"},s)}}
+  for(let ti=0;ti<tN;ti+=tStep)el("text",{x:ml+ti*cw+cw/2,y:mt+dN*ch+12,"text-anchor":"middle"},s,R.T0+ti);
+  el("text",{x:ml+tN*cw/2,y:H-4,"text-anchor":"middle",class:"lbl"},s,"T");
+  el("text",{x:10,y:mt+dN*ch/2,"text-anchor":"middle",class:"lbl",transform:`rotate(-90 10 ${mt+dN*ch/2})`},s,"d");
+  $("bm-leg").innerHTML=[...used.entries()].map(([n,c])=>`<span><i style="background:${c}"></i>${esc(n)}</span>`).join("")+(anyTie?`<span><i style="background:color-mix(in oklab, var(--muted) 35%, var(--panel))"></i>${t("bmTie")}</span>`:"")+`<span><i style="background:var(--soft);border:1px solid var(--line)"></i>${t("bmNone")}</span>`;
+  $("bm-n").textContent=`${used.size} ${L==="zh"?"種策略":used.size===1?"policy":"policies"}`;
+  let note=S[L].bmLin(linOk,pos); if(NET.disjoint)note+=S[L].bmExact(exOk,exPos);
+  const qs=NET.paths.map((p,j)=>1-p.arcs.reduce((x,i)=>x*geP(i,1),1));const eq=NET.disjoint&&qs.every(q=>Math.abs(q-qs[0])<1e-12);
+  if(eq)note+=t("bmWhy");
+  $("bm-note").textContent=note;
+}
+function polRows(){const C=candidates();return{all:C.all,rows:C.list.map(pol=>{const r=decomp(SIM.base,pol,state.d,state.T,"static")[0];return{pol,r,e:exactR(pol,state.d,state.T),ci:ciOf(r,SIM.N)}}).sort((a,b)=>b.r-a.r||(b.e??0)-(a.e??0))}}
+function drawPolicies(){
+  const host=$("pol"), PR=polRows(), R=PR.rows, mx=Math.max(0.05,...R.map(r=>Math.max(r.ci[1],r.e??0)));
+  const lab=Math.min(200,Math.max(70,8+6.2*Math.max(...R.map(r=>pname(r.pol).length))));
+  const ml=lab,mr=52,rh=19,mt=4,W=Math.max(460,ml+240),H=mt+R.length*rh+6,pw=W-ml-mr; const s=svg(W,H,host);
+  const cur=pname(state.pol), lin=pname(linRule(state.d,state.T));
+  R.forEach((row,k)=>{const y=mt+k*rh,nm=pname(row.pol),sel=nm===cur;
+    if(sel)el("rect",{x:0,y,width:W,height:rh,style:"fill:var(--soft)"},s);
+    el("text",{x:ml-8,y:y+rh/2+3,"text-anchor":"end",class:sel?"lbl":""},s,nm+(nm===lin?" ★":""));
+    el("rect",{x:ml,y:y+5,width:row.r/mx*pw,height:rh-10,rx:2,style:`fill:${sel?"var(--accent)":"color-mix(in oklab, var(--accent) 45%, var(--panel))"}`},s);
+    el("line",{x1:ml+row.ci[0]/mx*pw,x2:ml+row.ci[1]/mx*pw,y1:y+rh/2,y2:y+rh/2,style:"stroke:var(--ink);stroke-width:1"},s);
+    if(row.e!=null){const xe=ml+row.e/mx*pw; el("line",{x1:xe,x2:xe,y1:y+3,y2:y+rh-3,style:"stroke:var(--pol);stroke-width:2"},s)}
+    el("text",{x:W-4,y:y+rh/2+3,"text-anchor":"end",class:sel?"lbl":""},s,f4(row.r));
+    const hit=el("rect",{x:0,y,width:W,height:rh,style:"fill:transparent;cursor:pointer"},s); el("title",{},hit,`${nm}: ${f4(row.r)} [${f4(row.ci[0])}, ${f4(row.ci[1])}]`+(row.e!=null?` · exact ${f4(row.e)}`:""));
+    hit.addEventListener("click",()=>{setPolicy(row.pol);renderAll()});
+  });
+  $("pol-sc").textContent=`d = ${state.d}, T = ${state.T}`;
+  $("pol-cap").textContent=(PR.all?S[L].polCapAll(R.length):t("polCapSome"))+` ★ = ${t("linRule")}.`;
+}
+function drawSummary(){
+  const {d,T,tg,pol}=state, o=decomp(SIM.base,pol,d,T), r=o[0], ci=ciOf(r,SIM.N), e=exactRule(pol,d,T);
+  {const ke=document.querySelector('[data-t="kExact"]');if(ke)ke.textContent=state.rule==="static"?t("kExact"):state.rule==="quick"?(L==="zh"?"精確值（封閉式）":"Exact value (closed form)"):(L==="zh"?"精確值（列舉）":"Exact value (enumeration)")}
+  $("k-rel").textContent=f4(r);
+  $("k-ci").textContent=`${t("ci")} ${f4(ci[0])}–${f4(ci[1])} · N = ${SIM.N.toLocaleString()}`;
+  $("k-ex").textContent=e==null?t("na"):f4(e);
+  $("k-err").textContent=e==null?t("naS"):`${t("errL")} ${Math.abs(r-e).toFixed(6)}`;
+  const ok=r>=tg; $("k-tg").innerHTML=`<span class="chip ${ok?"good":"bad"}">${t(ok?"meets":"below")}</span>`;
+  $("k-tgs").textContent=`${f4(r)} vs ${tg.toFixed(2)}`;
+  const rtb=o[0]+o[1]; $("k-rt").textContent=f4(rtb); $("k-rts").textContent=S[L].rtS(f3(o[1]),pct(o[1]));
+  const A=S[L].adv, items=[], nm=curName();
+  if(r===0){items.push(A.noRel)} else {
+    items.push(A.rel(esc(nm),f3(r),f3(ci[0]),f3(ci[1]),d,T));
+    const best=polRows().rows[0];
+    if(state.rule==="static"){if(pname(best.pol)===nm||best.r-r<1e-9)items.push(A.isBest);else items.push(A.best(esc(pname(best.pol)),f3(best.r),"+"+f3(best.r-r)))}else{const rs=decomp(SIM.base,pol,d,T,"static")[0];items.push(S[L].advRule(t("rule_"+state.rule),f3(r),` (${r>=rs?"+":""}${f3(r-rs)} ${L==="zh"?"相對固定優先順序":"against static priority"})`))}
+    const fails=[1,2,3].map(i=>({i,v:o[i]})).sort((a,b)=>b.v-a.v)[0];
+    if(fails.v>0)items.push(A.loss(L==="en"?t("o_"+OUT[fails.i]).toLowerCase():t("o_"+OUT[fails.i]),pct(fails.v))+" "+(fails.i===1?A.lossPol:A.lossCap));
+    if(o[1]>0.0005)items.push(A.rt(f3(o[0]+o[1]),f3(o[1])));
+    const G=arcGains(); if(G.length&&G[0].g>0.0005){const top=G.filter(g=>G[0].g-g.g<0.003).map(g=>esc(g.id)).join(", ");items.push(A.arc(top,f3(G[0].g)))}
+  }
+  let minT=null;for(let TT=state.range.T0;TT<=state.range.T1;TT++){if(decomp(SIM.base,pol,d,TT)[0]>=tg){minT=TT;break}}
+  items.push(minT?A.minT(d,minT,tg.toFixed(2)):A.noT(d,tg.toFixed(2)));
+  const Gd=grid(), mdS=maxD(T,dd=>decomp(SIM.base,pol,dd,T)[0]), mdR=maxD(T,dd=>Gd.cells[dd+","+T].rt);
+  const cap=v=>v==null?"–":(v===state.range.d1?"≥ "+v:v); items.push(mdS!=null?A.promise(T,cap(mdS),cap(mdR)):A.promiseNone(T));
+  $("advice").innerHTML=items.map(x=>`<li>${x}</li>`).join("");
+}
+function trialB(k){const nA=NET.arcs.length;return NET.paths.map(p=>Math.min(...p.arcs.map(i=>SIM.caps[k*nA+i])))}
+function drawInspector(){
+  const N=SIM.N, nA=NET.arcs.length; state.k=Math.min(Math.max(1,state.k),N); $("in-k").value=state.k;
+  const k=state.k-1, b=trialB(k), w=b.map((bb,j)=>bb>0?NET.paths[j].lead+Math.ceil(state.d/bb):Infinity);
+  let h=`<tr><th>${t("pathTh")}</th><th>${t("capTh")}</th><th class="num">${t("bTh")}</th><th class="num">${t("wTh")}</th><th>${t("opTh")}</th><th>${t("okTh")}</th></tr>`;
+  NET.paths.forEach((p,j)=>{h+=`<tr><td><span class="pdot" style="background:${pcol(j)}"></span>${esc(p.id)}</td><td style="font-family:var(--font-data);font-size:12.5px">${p.arcs.map(i=>esc(NET.arcs[i].id)+"="+SIM.caps[k*nA+i]).join("  ")}</td><td class="num">${b[j]}</td><td class="num">${isFinite(w[j])?w[j]:"–"}</td><td>${t(b[j]>0?"yes":"no")}</td><td>${t(okPath(b[j],j,state.d,state.T)?"yes":"no")}</td></tr>`});
+  $("ins-table").innerHTML=h;
+  const st=[S[L].step1(state.k)]; NET.paths.forEach((p,j)=>st.push(S[L].stepPath(esc(p.id),b[j],w[j],state.T)));
+  if(state.rule==="static"){let as=-1; for(const j of state.pol){if(b[j]>0){as=j;break} st.push(S[L].stepSkip(esc(NET.paths[j].id)))}
+  if(as<0)st.push(S[L].stepNone);else st.push(S[L].stepRoute(esc(NET.paths[as].id),okPath(b[as],as,state.d,state.T)))}
+  else{const as=select(b,state.pol,state.d,state.T,state.rule);st.push(S[L].stepRule(t("rule_"+state.rule),as<0?null:esc(NET.paths[as].id),as>=0&&okPath(b[as],as,state.d,state.T)))}
+  const oc=outcome(b,state.pol,state.d,state.T);
+  st.push(`${t("outcome")}: <span class="out" style="color:${OCOL[oc]}">${t("o_"+OUT[oc])}</span>`);
+  $("ins-steps").innerHTML=st.map(x=>`<li>${x}</li>`).join("");
+}
+function drawRules(){const host=$("rules"),d=state.d,T=state.T,ml=4,mr=56,rh=50,mt=4,W=470,H=mt+RULES.length*rh+2,pw=W-ml-mr;const s=svg(W,H,host);
+  RULES.forEach((ru,k)=>{const y=mt+k*rh,o=decomp(SIM.base,state.pol,d,T,ru),e=exactRule(state.pol,d,T,undefined,ru),sel=ru===state.rule;
+    if(sel)el("rect",{x:0,y,width:W,height:rh-4,style:"fill:var(--soft)"},s);
+    const tx=el("text",{x:ml+2,y:y+14,class:"lbl"},s,t("rule_"+ru));el("tspan",{style:"font-weight:400;fill:var(--muted)"},tx,"  ·  "+t("ruleInfo_"+ru));
+    let x0=ml;o.forEach((v,i)=>{const w=v*pw;if(w>0){const r=el("rect",{x:x0,y:y+21,width:w,height:20,style:`fill:${OCOL[i]}`},s);el("title",{},r,`${t("o_"+OUT[i])}: ${pct(v)}`);
+      if(w>38)el("text",{x:x0+w/2,y:y+35,"text-anchor":"middle",style:`font-size:11px;fill:${i<2?"#fff":"var(--ink)"}`},s,pct(v))}x0+=w});
+    if(e!=null){const xe=ml+e*pw;el("line",{x1:xe,x2:xe,y1:y+17,y2:y+45,style:"stroke:var(--ink);stroke-width:2"},s)}
+    el("text",{x:W-4,y:y+35,"text-anchor":"end",class:sel?"lbl":""},s,f4(o[0]));
+    const hit=el("rect",{x:0,y,width:W,height:rh-4,style:"fill:transparent;cursor:pointer"},s);el("title",{},hit,`${t("rule_"+ru)}: ${f4(o[0])}`+(e!=null?` · exact ${f4(e)}`:""));
+    hit.addEventListener("click",()=>{state.rule=ru;renderAll()})});
+  $("rules-sc").textContent=`d = ${d}, T = ${T}`;
+  $("rules-leg").innerHTML=OUT.map((o,i)=>`<span><i style="background:${OCOL[i]}"></i>${t("o_"+o)}</span>`).join("")+(NET.disjoint?`<span><i style="background:var(--ink);width:2px"></i>${t("exactTick")}</span>`:"")}
+function renderAll(){if(!SIM)return;drawSummary();drawMap();drawDecomp();drawRealtime();drawFrontier();drawBestMap();drawArcs();drawPolicies();drawRules();drawInspector();drawPolicyList()}
+
+// ======================= Policy editor =======================
+function setPolicy(pol){const m=NET.paths.length;state.pol=pol.slice();state.off=[...Array(m).keys()].filter(j=>!pol.includes(j))}
+function drawPolicyList(){
+  $("in-rule").innerHTML=RULES.map(r=>`<option value="${r}" ${r===state.rule?"selected":""}>${t("rule_"+r)}</option>`).join("");
+  const host=$("pollist"), order=[...state.pol,...state.off];
+  host.innerHTML=order.map((j,idx)=>{const on=state.pol.includes(j);const rank=on?state.pol.indexOf(j)+1:"–";
+    return `<div class="polrow${on?"":" off"}"><span class="rank">${rank}</span><input type="checkbox" id="pc-${j}" ${on?"checked":""} aria-label="use ${esc(NET.paths[j].id)}">
+      <label for="pc-${j}"><span class="pdot" style="background:${pcol(j)}"></span>${esc(NET.paths[j].id)} <span style="color:var(--muted);font-size:12px">(${t("thPL")} ${NET.paths[j].lead})</span></label>
+      <button class="btn ghost icon" data-up="${j}" ${!on||rank===1?"disabled":""} aria-label="up">↑</button><button class="btn ghost icon" data-dn="${j}" ${!on||rank===state.pol.length?"disabled":""} aria-label="down">↓</button></div>`}).join("");
+  host.querySelectorAll("input[type=checkbox]").forEach(cb=>cb.addEventListener("change",e=>{const j=+e.target.id.slice(3);
+    if(e.target.checked){state.off=state.off.filter(x=>x!==j);state.pol.push(j)}else{if(state.pol.length===1){e.target.checked=true;return}state.pol=state.pol.filter(x=>x!==j);state.off.push(j)}renderAll()}));
+  host.querySelectorAll("[data-up]").forEach(bt=>bt.addEventListener("click",()=>{const j=+bt.dataset.up,i=state.pol.indexOf(j);if(i>0){[state.pol[i-1],state.pol[i]]=[state.pol[i],state.pol[i-1]];renderAll()}}));
+  host.querySelectorAll("[data-dn]").forEach(bt=>bt.addEventListener("click",()=>{const j=+bt.dataset.dn,i=state.pol.indexOf(j);if(i<state.pol.length-1){[state.pol[i+1],state.pol[i]]=[state.pol[i],state.pol[i+1]];renderAll()}}));
+}
+
+// ======================= Network input editor =======================
+function arcRec(id){let a=RAW.arcs.find(x=>x.id===id);if(!a){a={id,lead:"",dist:""};RAW.arcs.push(a)}return a}
+function drawInputs(){
+  let ph=`<tr><th>${t("thPath")}</th><th>${t("thArcs")}</th><th class="num">${t("thPL")}</th><th></th></tr>`;
+  RAW.paths.forEach((p,r)=>{const ids=splitArcs(p.arcs);const lead=ids.reduce((s,a)=>{const x=RAW.arcs.find(y=>y.id===a);return s+(x&&x.lead!==""?Number(x.lead):NaN)},0);
+    ph+=`<tr><td><span class="pdot" style="background:${pcol(r)}"></span><input type="text" class="mono w-id" id="pi-${r}" value="${esc(p.id)}" aria-label="path name"></td><td><input type="text" class="mono" id="pa-${r}" value="${esc(p.arcs)}" placeholder="a1, a2, a3" style="min-width:16em" aria-label="arcs"></td><td class="num">${isNaN(lead)||!ids.length?"–":lead}</td><td><button class="btn ghost icon" data-delpath="${r}" aria-label="delete">✕</button></td></tr>`});
+  $("path-table").innerHTML=ph;
+  const I=infer(RAW);
+  let h=`<tr><th>${t("thId")}</th><th>${t("thLead")}</th><th>${t("thDist")}</th><th class="num">${t("thMax")}</th><th class="num">${t("thSum")}</th></tr>`;
+  I.order.forEach((id,r)=>{const a=arcRec(id);const d=parseDist(a.dist);const sum=d?d.reduce((s,x)=>s+x[1],0):NaN;const okS=d&&Math.abs(sum-1)<1e-6;const e=I.ends[id];
+    h+=`<tr><td class="mono" style="font-family:var(--font-data)">${esc(id)}</td>
+    <td><input type="number" class="w-lead${a.lead===""?" bad":""}" id="al-${r}" min="0" step="1" value="${esc(a.lead)}" aria-label="lead time of ${esc(id)}"></td><td><input type="text" class="mono${d&&okS?"":" bad"}" id="ad-${r}" value="${esc(a.dist)}" placeholder="5:0.85, 3:0.05, 1:0.05, 0:0.05" style="min-width:19em" aria-label="capacity distribution of ${esc(id)}"></td>
+    <td class="num">${d?Math.max(...d.map(x=>x[0])):"–"}</td><td class="num" style="color:${okS?"var(--ok)":"var(--warn)"}">${isNaN(sum)?"–":sum.toFixed(2)}</td></tr>`});
+  $("arc-table").innerHTML=h;
+  I.order.forEach((id,r)=>{const a=arcRec(id);
+    $("al-"+r).addEventListener("change",e=>{a.lead=e.target.value===""?"":Number(e.target.value);setTimeout(drawInputs,0)});
+    $("ad-"+r).addEventListener("change",e=>{a.dist=e.target.value;setTimeout(drawInputs,0)})});
+  RAW.paths.forEach((p,r)=>{$("pi-"+r).addEventListener("change",e=>{p.id=e.target.value.trim();setTimeout(drawInputs,0)});$("pa-"+r).addEventListener("change",e=>{p.arcs=e.target.value;setTimeout(drawInputs,0)})});
+  document.querySelectorAll("[data-delpath]").forEach(b=>b.addEventListener("click",()=>{RAW.paths.splice(+b.dataset.delpath,1);drawInputs()}));
+  drawDiagram(I);
+}
+function drawDiagram(I){
+  I=I||infer(RAW); const host=$("diagram");
+  if(I.errs.length||!I.order.length){host.innerHTML=`<p class="note">${esc(I.errs[0]||t("pathsNote"))}</p>`;$("diag-leg").innerHTML="";$("disjoint-flag").textContent="";return}
+  const nodes=I.nodes, edges=I.order.map(id=>({id,...I.ends[id]}));
+  const lvl={s:0}; let changed=true, guard=0;
+  while(changed&&guard++<200){changed=false;edges.forEach(e=>{if(e.to==="t")return;if(lvl[e.from]!=null&&(lvl[e.to]==null||lvl[e.to]<lvl[e.from]+1)&&lvl[e.from]+1<nodes.length){lvl[e.to]=lvl[e.from]+1;changed=true}})}
+  let mx=0; nodes.forEach(n=>{if(n!=="t"&&lvl[n]!=null)mx=Math.max(mx,lvl[n])}); lvl.t=mx+1; nodes.forEach(n=>{if(lvl[n]==null)lvl[n]=1});
+  const cols={}; nodes.forEach(n=>{(cols[lvl[n]]=cols[lvl[n]]||[]).push(n)});
+  const nc=mx+2, maxRows=Math.max(...Object.values(cols).map(c=>c.length));
+  const W=Math.max(520,nc*150), H=Math.max(180,maxRows*90+40), pos={};
+  Object.entries(cols).forEach(([c,list])=>list.forEach((n,i)=>{pos[n]={x:40+(+c)*(W-80)/Math.max(1,nc-1),y:(i+1)*H/(list.length+1)}}));
+  const s=svg(W,H,host); s.style.maxWidth=W*1.25+"px"; s.style.margin="0 auto";
+  const defs=el("defs",{},s); const mk=el("marker",{id:"arw",viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"9",markerHeight:"9",markerUnits:"userSpaceOnUse",orient:"auto-start-reverse"},defs); el("path",{d:"M0,0 L10,5 L0,10 z",style:"fill:var(--muted)"},mk);
+  const pathsOf={}; I.P.forEach((p,j)=>p.arcs.forEach(a=>{(pathsOf[a]=pathsOf[a]||[]).push(j)}));
+  const lead=id=>{const a=RAW.arcs.find(x=>x.id===id);return a&&a.lead!==""?a.lead:"?"};
+  const pairCount={};
+  edges.forEach(a=>{const A=pos[a.from],B=pos[a.to]; if(!A||!B)return;
+    const key=[a.from,a.to].sort().join("|"); const n=(pairCount[key]=(pairCount[key]||0)+1);
+    const dx=B.x-A.x,dy=B.y-A.y,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len,r1=a.from==="s"?15:7,r2=a.to==="t"?15:7;
+    const x1=A.x+ux*r1,y1=A.y+uy*r1,x2=B.x-ux*r2,y2=B.y-uy*r2, off=(n-1)*22*(n%2?1:-1), cx=(x1+x2)/2-uy*off, cy=(y1+y2)/2+ux*off;
+    const ps=pathsOf[a.id]||[], col=ps.length>1?"var(--ink)":pcol(ps[0]||0);
+    el("path",{d:`M${x1},${y1} Q${cx},${cy} ${x2},${y2}`,style:`fill:none;stroke:${col};stroke-width:${ps.length>1?3:2.2}`,"marker-end":"url(#arw)"},s);
+    el("text",{x:cx+uy*13,y:cy-ux*13+3,"text-anchor":"middle",class:"lbl"},s,`${a.id} (${lead(a.id)})`)});
+  nodes.forEach(n=>{const p=pos[n],end=n==="s"||n==="t";el("circle",{cx:p.x,cy:p.y,r:end?14:6,style:`fill:${end?"var(--panel)":"var(--ink)"};stroke:${end?"var(--accent)":"var(--ink)"};stroke-width:${end?2.5:1}`},s);if(end)el("text",{x:p.x,y:p.y+4,"text-anchor":"middle",class:"lbl",style:"font-size:13px;font-style:italic"},s,n)});
+  const anyShared=Object.values(pathsOf).some(v=>v.length>1);
+  $("diag-leg").innerHTML=I.P.map((p,j)=>`<span><i style="background:${pcol(j)}"></i>${esc(p.id)}</span>`).join("")+(anyShared?`<span><i style="background:var(--ink)"></i>${L==="zh"?"共用弧":"shared arc"}</span>`:"")+`<span>(${t("thLead")})</span>`;
+  const c=compile(RAW); $("disjoint-flag").textContent=c.net?(c.net.disjoint?t("disjYes"):S[L].disjNo(c.net.shared.join(", "))):"";
+}
+function showMsgs(list,ok){const u=$("msgs");u.className="msgs"+(ok?" ok":"");u.innerHTML=list.map(x=>`<li>${esc(x)}</li>`).join("")}
+function cleanRaw(){const used=new Set(RAW.paths.flatMap(p=>splitArcs(p.arcs)));return{paths:RAW.paths.map(p=>({id:p.id,arcs:p.arcs})),arcs:RAW.arcs.filter(a=>used.has(a.id))}}
+function applyNet(){
+  const c=compile(RAW); if(c.errs){showMsgs(c.errs,false);return false}
+  NET=c.net; const cr=cleanRaw(); isLin=JSON.stringify(cr.arcs)===JSON.stringify(LIN.arcs)&&JSON.stringify(cr.paths)===JSON.stringify(LIN.paths);
+  try{localStorage.setItem("sfn-net-v3",JSON.stringify(cr))}catch(e){}
+  runSim(+$("in-N").value,Math.max(1,+$("in-seed").value||2026));
+  setPolicy(linRule(state.d,state.T)); state.k=1; setStatus(); renderAll();
+  $("footer").textContent=S[L].footer(isLin);
+  showMsgs([S[L].okApplied(NET.arcs.length,NET.paths.length)],true); return true;
+}
+
+// ======================= Controls =======================
+function syncInputs(){const R=state.range;
+  $("in-d").min=R.d0;$("in-d").max=R.d1;$("in-T").min=R.T0;$("in-T").max=R.T1;
+  state.d=Math.min(Math.max(state.d,R.d0),R.d1);state.T=Math.min(Math.max(state.T,R.T0),R.T1);
+  $("in-d").value=state.d;$("in-T").value=state.T;$("in-tg").value=state.tg;$("v-d").textContent=state.d;$("v-T").textContent=state.T;$("v-tg").textContent=state.tg.toFixed(2);
+  $("r-d0").value=R.d0;$("r-d1").value=R.d1;$("r-T0").value=R.T0;$("r-T1").value=R.T1}
+function readRange(){const v=["r-d0","r-d1","r-T0","r-T1"].map(id=>Math.round(+$(id).value));let[d0,d1,T0,T1]=v;
+  if(!(d0>=1&&d1>=d0&&T0>=1&&T1>=T0)){syncInputs();return} d1=Math.min(d1,d0+79);T1=Math.min(T1,T0+59);state.range={d0,d1,T0,T1};syncInputs();renderAll()}
+function setStatus(){if(SIM)$("status").textContent=`N = ${SIM.N.toLocaleString()} · seed ${SIM.seed} · ${SIM.ms.toFixed(0)} ms`}
+function applyLang(){document.documentElement.lang=L==="zh"?"zh-Hant":"en";document.querySelectorAll("[data-t]").forEach(e=>{e.textContent=t(e.dataset.t)});
+  $("lang-en").setAttribute("aria-pressed",L==="en");$("lang-zh").setAttribute("aria-pressed",L==="zh");
+  $("footer").textContent=S[L].footer(isLin); syncInputs(); setStatus(); drawInputs(); renderAll()}
+function showTab(which){const inV=which==="in";$("view-in").hidden=!inV;$("view-an").hidden=inV;$("tab-in").setAttribute("aria-selected",inV);$("tab-an").setAttribute("aria-selected",!inV);
+  try{localStorage.setItem("sfn-tab",which)}catch(e){} if(inV)drawDiagram()}
+$("tab-in").addEventListener("click",()=>showTab("in"));
+$("tab-an").addEventListener("click",()=>showTab("an"));
+$("in-d").addEventListener("input",e=>{state.d=+e.target.value;syncInputs();renderAll()});
+$("in-T").addEventListener("input",e=>{state.T=+e.target.value;syncInputs();renderAll()});
+$("in-tg").addEventListener("input",e=>{state.tg=+e.target.value;syncInputs();renderAll()});
+["r-d0","r-d1","r-T0","r-T1"].forEach(id=>$(id).addEventListener("change",readRange));
+$("btn-best").addEventListener("click",()=>{setPolicy(polRows().rows[0].pol);renderAll()});
+$("in-rule").addEventListener("change",e=>{state.rule=e.target.value;renderAll()});
+$("btn-lin").addEventListener("click",()=>{setPolicy(linRule(state.d,state.T));renderAll()});
+$("btn-run").addEventListener("click",()=>{$("btn-run").disabled=true;$("status").textContent="…";setTimeout(()=>{runSim(+$("in-N").value,Math.max(1,+$("in-seed").value||2026));setStatus();$("btn-run").disabled=false;renderAll()},20)});
+$("in-k").addEventListener("change",e=>{state.k=+e.target.value||1;drawInspector()});
+$("k-prev").addEventListener("click",()=>{state.k--;drawInspector()});
+$("k-next").addEventListener("click",()=>{state.k++;drawInspector()});
+$("k-fail").addEventListener("click",()=>{for(let s=1;s<=SIM.N;s++){const k=(state.k-1+s)%SIM.N;if(outcome(trialB(k),state.pol,state.d,state.T)!==0){state.k=k+1;break}}drawInspector()});
+$("add-path").addEventListener("click",()=>{let k=RAW.paths.length+1;while(RAW.paths.some(p=>p.id==="P"+k))k++;RAW.paths.push({id:"P"+k,arcs:""});drawInputs();setTimeout(()=>{const i=$("pa-"+(RAW.paths.length-1));if(i)i.focus()},0)});
+$("apply").addEventListener("click",()=>{if(applyNet())showTab("an")});
+$("load-lin").addEventListener("click",()=>{RAW=JSON.parse(JSON.stringify(LIN));state.range={...LIN.range};state.d=20;state.T=15;drawInputs();syncInputs();applyNet()});
+$("json-export").addEventListener("click",()=>{$("json").value=JSON.stringify({...cleanRaw(),range:state.range},null,1)});
+$("json-copy").addEventListener("click",async e=>{const b=e.currentTarget;if(!$("json").value)$("json-export").click();try{await navigator.clipboard.writeText($("json").value);b.textContent=t("copied");setTimeout(()=>b.textContent=t("jsonCopy"),1500)}catch(err){$("json").select();showMsgs([t("copyFail")],false)}});
+$("json-import").addEventListener("click",()=>{try{const j=JSON.parse($("json").value);if(!Array.isArray(j.arcs)||!Array.isArray(j.paths))throw 0;
+  RAW={paths:j.paths.map(p=>({id:String(p.id),arcs:Array.isArray(p.arcs)?p.arcs.join(", "):String(p.arcs)})),arcs:j.arcs.map(a=>({id:String(a.id),lead:a.lead,dist:Array.isArray(a.dist)?a.dist.map(x=>x.join(":")).join(", "):String(a.dist)}))};
+  if(j.range)state.range={...state.range,...j.range}; drawInputs(); syncInputs(); applyNet()}catch(err){showMsgs([S[L].err.json],false)}});
+$("lang-en").addEventListener("click",()=>{L="en";try{localStorage.setItem("lang",L)}catch(e){}applyLang()});
+$("lang-zh").addEventListener("click",()=>{L="zh";try{localStorage.setItem("lang",L)}catch(e){}applyLang()});
+
+// ======================= Typesetting: italic symbols with subscripts (P1 → P₁, a10 → a₁₀) =======================
+const ID_RE=/\b([A-Za-z]{1,2})(\d{1,3})\b/g, VAR_RE=/(^|[^A-Za-z])([dTNbwR])(?=\s*(?:[=≥≤<>,)(（]|$))/g;
+function fmtTextNode(n){const s=n.nodeValue; if(!/[A-Za-z]/.test(s))return;
+  const parts=[];let last=0;const re=new RegExp(ID_RE.source+"|"+VAR_RE.source,"g");let m;
+  while((m=re.exec(s))){ if(m[1]!==undefined){parts.push([s.slice(last,m.index)],["id",m[1],m[2]]);last=m.index+m[0].length}
+    else{const pre=m[3]||"";parts.push([s.slice(last,m.index)+pre],["var",m[4]]);last=m.index+m[0].length}}
+  if(!parts.length)return; parts.push([s.slice(last)]);
+  const f=document.createDocumentFragment();
+  for(const q of parts){if(q.length===1){if(q[0])f.appendChild(document.createTextNode(q[0]));continue}
+    const i=document.createElement("i");i.className="v";i.textContent=q[1];f.appendChild(i);
+    if(q[0]==="id"){const b=document.createElement("sub");b.className="v";b.textContent=q[2];f.appendChild(b)}}
+  n.parentNode.replaceChild(f,n);
+}
+const SVGNS="http://www.w3.org/2000/svg";
+function fmtSvgText(tx){if(tx.dataset.fmt)return;const s=tx.textContent;tx.dataset.fmt="1";
+  const re=new RegExp(ID_RE.source+"|"+VAR_RE.source,"g");if(!re.test(s))return;re.lastIndex=0;
+  while(tx.firstChild)tx.removeChild(tx.firstChild);let last=0,m;
+  const add=(txt,it,sub)=>{if(!txt)return;const sp=document.createElementNS(SVGNS,"tspan");if(it)sp.setAttribute("font-style","italic");if(sub){sp.setAttribute("baseline-shift","sub");sp.setAttribute("font-size","75%")}sp.textContent=txt;tx.appendChild(sp)};
+  while((m=re.exec(s))){if(m[1]!==undefined){add(s.slice(last,m.index));add(m[1],true);add(m[2],false,true)}else{add(s.slice(last,m.index)+(m[3]||""));add(m[4],true)}last=m.index+m[0].length}
+  add(s.slice(last));
+}
+function fmtAll(root){
+  root.querySelectorAll("svg text").forEach(fmtSvgText);
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode(n){const p=n.parentElement;if(!p)return 2;
+    if(p.closest("script,style,textarea,select,option,svg,title,i.v,sub.v,.status"))return 2;return 1}});
+  const list=[];while(w.nextNode())list.push(w.currentNode);list.forEach(fmtTextNode);
+}
+let fmtBusy=false,fmtQueued=false;
+const obs=new MutationObserver(()=>{if(fmtBusy||fmtQueued)return;fmtQueued=true;requestAnimationFrame(()=>{fmtQueued=false;fmtBusy=true;obs.disconnect();fmtAll(document.body);obs.observe(document.body,{childList:true,subtree:true,characterData:true});fmtBusy=false})});
+obs.observe(document.body,{childList:true,subtree:true,characterData:true});
+
+// ======================= Boot =======================
+try{const s=localStorage.getItem("lang");if(s==="zh"||s==="en")L=s}catch(e){}
+try{const s=JSON.parse(localStorage.getItem("sfn-net-v3")||"null");if(s&&Array.isArray(s.arcs)&&Array.isArray(s.paths)&&compile(s).net)RAW=s}catch(e){}
+let tab="an";try{const s=localStorage.getItem("sfn-tab");if(s==="in"||s==="an")tab=s}catch(e){}
+drawInputs(); syncInputs();
+if(!applyNet()){RAW=JSON.parse(JSON.stringify(LIN));drawInputs();applyNet()}
+$("msgs").innerHTML="";
+applyLang(); showTab(tab);
+})();
+</script>
+
+</body>
+</html>
